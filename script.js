@@ -270,17 +270,29 @@ async function handleLogin(e, role) {
 // ── Populate dashboard with real user data ────────────────────
 function populateDashboard(role, user) {
   if (role === 'student') {
-    // Update sidebar profile
-    const nameEl   = document.querySelector('.student-sidebar .profile-name');
-    const rollEl   = document.querySelectorAll('.student-sidebar .profile-detail')[0];
-    const deptEl   = document.querySelectorAll('.student-sidebar .profile-detail')[1];
+    const nameEl = document.querySelector('.student-sidebar .profile-name');
+    const rollEl = document.querySelectorAll('.student-sidebar .profile-detail')[0];
+    const deptEl = document.querySelectorAll('.student-sidebar .profile-detail')[1];
     if (nameEl) nameEl.textContent = user.name || 'Student';
     if (rollEl) rollEl.textContent = 'Roll: ' + (user.rollNo || user.id);
     if (deptEl) deptEl.textContent = (user.department || '') + ' · Sem ' + (user.semester || '');
 
-    // Load live data
+    // Populate profile form
+    const pfName  = document.querySelector('#dash-profile input[type=\"text\"]');
+    const pfEmail = document.querySelector('#dash-profile input[type=\"email\"]');
+    const allInp  = document.querySelectorAll('#dash-profile input');
+    if (allInp[0]) allInp[0].value = user.name          || '';
+    if (allInp[1]) allInp[1].value = user.rollNo || user.id || '';
+    if (allInp[2]) allInp[2].value = user.department    || '';
+    if (allInp[3]) allInp[3].value = user.semester      || '';
+    if (allInp[4]) allInp[4].value = user.mobile        || '';
+    if (pfEmail)   pfEmail.value   = user.email         || '';
+
     loadStudentFees();
     loadStudentNotices();
+    loadStudentAssignments();
+    loadStudentMaterials();
+    loadStudentMarks(user.semester || 5);
   }
 
   if (role === 'faculty') {
@@ -290,6 +302,9 @@ function populateDashboard(role, user) {
     if (nameEl) nameEl.textContent = user.name || 'Faculty';
     if (idEl)   idEl.textContent   = 'ID: ' + (user.facultyId || user.id);
     if (deptEl) deptEl.textContent = 'Dept: ' + (user.department || '');
+    // Pre-load lists
+    loadFacultyAssignments();
+    loadFacultyMaterials();
   }
 
   if (role === 'admin') {
@@ -620,4 +635,608 @@ async function saveFacultyMarks() {
 function resetFacultyMarks() {
   document.querySelectorAll('#fMarksBody .marks-input').forEach(i => i.value = '');
   updateEffective();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FACULTY — Create Assignment (real API)
+// ═══════════════════════════════════════════════════════════════
+
+async function createAssignment() {
+  const form = document.getElementById('assignmentForm');
+  if (!form) return;
+
+  const course  = document.getElementById('asgn-course');
+  const title   = document.getElementById('asgn-title');
+  const desc    = document.getElementById('asgn-desc');
+  const due     = document.getElementById('asgn-due');
+  const marks   = document.getElementById('asgn-marks');
+  const sem     = document.getElementById('asgn-sem');
+
+  // Parse subject and department from course dropdown
+  // e.g. "Machine Learning — CSE"
+  const courseText = course?.options[course.selectedIndex]?.text || '';
+  const [subject, dept] = courseText.includes('—')
+    ? courseText.split('—').map(s => s.trim())
+    : [courseText, 'CSE'];
+
+  if (!title?.value || !due?.value) {
+    showToast('Please fill in title and due date.');
+    return;
+  }
+
+  const user = JSON.parse(localStorage.getItem('kit_user') || '{}');
+
+  const payload = {
+    title:       title.value.trim(),
+    subject:     subject || 'General',
+    semester:    parseInt(sem?.value) || 5,
+    department:  dept || user.department || 'CSE',
+    description: desc?.value?.trim() || '',
+    dueDate:     due.value,
+    maxMarks:    parseFloat(marks?.value) || 10,
+  };
+
+  const r = await apiFetch('/api/faculty/assignments', {
+    method: 'POST',
+    body:   JSON.stringify(payload),
+  });
+
+  if (r?.ok) {
+    showToast('✔ Assignment created successfully!');
+    // Clear form
+    if (title) title.value = '';
+    if (desc)  desc.value  = '';
+    if (due)   due.value   = '';
+    // Refresh list
+    loadFacultyAssignments();
+  } else {
+    showToast(r?.data?.error || 'Failed to create assignment.');
+  }
+}
+
+// Load and display faculty's assignments
+async function loadFacultyAssignments() {
+  const user = JSON.parse(localStorage.getItem('kit_user') || '{}');
+  const r    = await apiFetch('/api/faculty/assignments?department=' + (user.department || 'CSE'));
+  if (!r?.ok) return;
+
+  const list = document.getElementById('facultyAssignmentList');
+  if (!list) return;
+
+  const items = r.data.assignments || [];
+  if (items.length === 0) {
+    list.innerHTML = '<p style="color:var(--text-light);font-size:0.88rem;">No assignments created yet.</p>';
+    return;
+  }
+
+  list.innerHTML = items.map(a => `
+    <div class="asgn-card" style="margin-bottom:0.8rem;">
+      <div class="asgn-info">
+        <h5>${a.subject} — ${a.title}</h5>
+        <p>${a.description || ''}</p>
+        <span class="asgn-due"><i class="fa fa-clock"></i> Due: ${a.dueDate} &nbsp;|&nbsp; Max: ${a.maxMarks} marks &nbsp;|&nbsp; Sem ${a.semester}</span>
+      </div>
+      <div class="asgn-action">
+        <span class="badge submitted">Active</span>
+        <button class="btn-sm danger" onclick="deleteAssignment('${a.id}')">Delete</button>
+      </div>
+    </div>`).join('');
+}
+
+async function deleteAssignment(id) {
+  if (!confirm('Delete this assignment?')) return;
+  const r = await apiFetch('/api/faculty/assignments/' + id, { method: 'DELETE' });
+  showToast(r?.ok ? 'Assignment deleted.' : 'Failed to delete.');
+  if (r?.ok) loadFacultyAssignments();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FACULTY — Upload Material (real API)
+// ═══════════════════════════════════════════════════════════════
+
+async function uploadMaterial() {
+  const titleEl   = document.getElementById('mat-title');
+  const subjectEl = document.getElementById('mat-subject');
+  const typeEl    = document.getElementById('mat-type');
+  const linkEl    = document.getElementById('mat-link');
+  const descEl    = document.getElementById('mat-desc');
+  const semEl     = document.getElementById('mat-sem');
+
+  if (!titleEl?.value) { showToast('Please enter a material title.'); return; }
+
+  const user = JSON.parse(localStorage.getItem('kit_user') || '{}');
+
+  // Parse subject/dept from dropdown  e.g. "Machine Learning (CSE)"
+  const subjectText = subjectEl?.options[subjectEl.selectedIndex]?.text || '';
+  const subMatch    = subjectText.match(/^(.+?)\s*\((\w+)\)$/);
+  const subject     = subMatch ? subMatch[1].trim() : subjectText;
+  const dept        = subMatch ? subMatch[2] : (user.department || 'CSE');
+
+  const typeMap = {
+    'Lecture Notes': 'notes',
+    'Assignment':    'assignment',
+    'Reference Book':'reference',
+    'Video':         'video',
+    'Slides':        'slides',
+  };
+  const rawType = typeEl?.options[typeEl.selectedIndex]?.text || 'Lecture Notes';
+
+  const payload = {
+    title:       titleEl.value.trim(),
+    subject:     subject || 'General',
+    semester:    parseInt(semEl?.value) || 5,
+    department:  dept,
+    type:        typeMap[rawType] || 'notes',
+    fileUrl:     linkEl?.value?.trim() || '',
+    description: descEl?.value?.trim() || '',
+    fileName:    titleEl.value.trim(),
+  };
+
+  const r = await apiFetch('/api/faculty/materials', {
+    method: 'POST',
+    body:   JSON.stringify(payload),
+  });
+
+  if (r?.ok) {
+    showToast('✔ Material uploaded successfully!');
+    if (titleEl) titleEl.value = '';
+    if (linkEl)  linkEl.value  = '';
+    if (descEl)  descEl.value  = '';
+    loadFacultyMaterials();
+  } else {
+    showToast(r?.data?.error || 'Failed to upload material.');
+  }
+}
+
+async function loadFacultyMaterials() {
+  const user = JSON.parse(localStorage.getItem('kit_user') || '{}');
+  const r    = await apiFetch('/api/faculty/materials?department=' + (user.department || 'CSE'));
+  if (!r?.ok) return;
+
+  const list  = document.getElementById('facultyMaterialList');
+  if (!list) return;
+
+  const items = r.data.materials || [];
+  if (items.length === 0) {
+    list.innerHTML = '<p style="color:var(--text-light);font-size:0.88rem;">No materials uploaded yet.</p>';
+    return;
+  }
+
+  const icons = { notes:'fa-file-pdf', slides:'fa-file-powerpoint', video:'fa-file-video', reference:'fa-book', assignment:'fa-tasks', other:'fa-file' };
+
+  list.innerHTML = items.map(m => `
+    <div class="mat-card">
+      <i class="fa ${icons[m.type] || 'fa-file'}"></i>
+      <div>
+        <h5>${m.title}</h5>
+        <p>${m.subject} · Sem ${m.semester} · ${m.uploadedByName || ''}</p>
+        ${m.fileUrl ? `<a href="${m.fileUrl}" target="_blank" style="font-size:0.78rem;color:var(--navy-light);">Open Link ↗</a>` : ''}
+      </div>
+      <button class="btn-sm danger" onclick="deleteMaterial('${m.id}')"><i class="fa fa-trash"></i></button>
+    </div>`).join('');
+}
+
+async function deleteMaterial(id) {
+  if (!confirm('Delete this material?')) return;
+  const r = await apiFetch('/api/faculty/materials/' + id, { method: 'DELETE' });
+  showToast(r?.ok ? 'Material deleted.' : 'Failed to delete.');
+  if (r?.ok) loadFacultyMaterials();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ADMIN — Edit Account Modal
+// ═══════════════════════════════════════════════════════════════
+
+function openEditModal(id, role) {
+  // Build a simple inline modal
+  const existing = document.getElementById('adminEditModal');
+  if (existing) existing.remove();
+
+  // Find row data
+  const row    = document.querySelector(`#adminTableBody tr[data-id="${id.toLowerCase()}"]`);
+  const name   = row?.children[1]?.textContent || '';
+  const dept   = row?.dataset.dept || '';
+  const year   = row?.dataset.year || '';
+  const status = row?.children[5]?.querySelector('.badge')?.textContent?.trim()?.toLowerCase() || 'active';
+
+  const modal = document.createElement('div');
+  modal.id    = 'adminEditModal';
+  modal.style.cssText = `
+    position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9100;
+    display:flex;align-items:center;justify-content:center;`;
+
+  modal.innerHTML = `
+    <div style="background:white;border-radius:16px;padding:2rem;width:92%;max-width:440px;box-shadow:0 24px 80px rgba(0,0,0,0.3);position:relative;">
+      <button onclick="document.getElementById('adminEditModal').remove()"
+        style="position:absolute;top:1rem;right:1rem;background:var(--off-white);border:1px solid var(--border);
+               width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:1rem;">✕</button>
+      <h3 style="font-family:var(--font-display);color:var(--navy-dark);margin-bottom:1.4rem;">
+        Edit Account — ${id.toUpperCase()}
+      </h3>
+      <div class="form-group" style="margin-bottom:0.9rem;">
+        <label style="font-size:0.82rem;font-weight:700;color:var(--text-light);">Full Name</label>
+        <input id="edit-name" type="text" value="${name}"
+          style="width:100%;padding:0.6rem 0.9rem;border:1px solid var(--border);border-radius:8px;font-family:var(--font-body);margin-top:0.3rem;"/>
+      </div>
+      <div class="form-group" style="margin-bottom:0.9rem;">
+        <label style="font-size:0.82rem;font-weight:700;color:var(--text-light);">Department</label>
+        <select id="edit-dept"
+          style="width:100%;padding:0.6rem 0.9rem;border:1px solid var(--border);border-radius:8px;font-family:var(--font-body);margin-top:0.3rem;">
+          ${['CSE','EE','ME','CE','BT'].map(d => `<option ${d===dept?'selected':''}>${d}</option>`).join('')}
+        </select>
+      </div>
+      ${role === 'Student' ? `
+      <div class="form-group" style="margin-bottom:0.9rem;">
+        <label style="font-size:0.82rem;font-weight:700;color:var(--text-light);">Year</label>
+        <select id="edit-year"
+          style="width:100%;padding:0.6rem 0.9rem;border:1px solid var(--border);border-radius:8px;font-family:var(--font-body);margin-top:0.3rem;">
+          ${[1,2,3,4].map(y => `<option value="${y}" ${String(y)===year?'selected':''}>Year ${y}</option>`).join('')}
+        </select>
+      </div>` : ''}
+      <div class="form-group" style="margin-bottom:0.9rem;">
+        <label style="font-size:0.82rem;font-weight:700;color:var(--text-light);">Status</label>
+        <select id="edit-status"
+          style="width:100%;padding:0.6rem 0.9rem;border:1px solid var(--border);border-radius:8px;font-family:var(--font-body);margin-top:0.3rem;">
+          <option value="active"   ${status==='active'  ?'selected':''}>Active</option>
+          <option value="inactive" ${status==='inactive'?'selected':''}>Inactive</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom:1.2rem;">
+        <label style="font-size:0.82rem;font-weight:700;color:var(--text-light);">New Password <span style="font-weight:400;color:var(--text-light)">(leave blank to keep current)</span></label>
+        <input id="edit-password" type="password" placeholder="New password (min 8 chars)"
+          style="width:100%;padding:0.6rem 0.9rem;border:1px solid var(--border);border-radius:8px;font-family:var(--font-body);margin-top:0.3rem;"/>
+      </div>
+      <div style="display:flex;gap:0.8rem;">
+        <button onclick="saveEditAccount('${id}','${role}')"
+          style="flex:1;background:var(--navy);color:white;border:none;padding:0.7rem;border-radius:8px;font-size:0.9rem;font-weight:600;cursor:pointer;font-family:var(--font-body);">
+          Save Changes
+        </button>
+        <button onclick="document.getElementById('adminEditModal').remove()"
+          style="flex:1;background:var(--off-white);color:var(--text-mid);border:1px solid var(--border);padding:0.7rem;border-radius:8px;font-size:0.9rem;cursor:pointer;font-family:var(--font-body);">
+          Cancel
+        </button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+}
+
+async function saveEditAccount(id, role) {
+  const name     = document.getElementById('edit-name')?.value?.trim();
+  const dept     = document.getElementById('edit-dept')?.value;
+  const year     = document.getElementById('edit-year')?.value;
+  const status   = document.getElementById('edit-status')?.value;
+  const password = document.getElementById('edit-password')?.value;
+
+  const updates = { name, department: dept, status };
+  if (year)     updates.year = parseInt(year);
+  if (password && password.length >= 8) updates.password = password;
+  else if (password && password.length > 0) {
+    showToast('Password must be at least 8 characters.'); return;
+  }
+
+  const endpoint = role === 'Faculty'
+    ? `/api/admin/faculty/${id}`
+    : `/api/admin/students/${id}`;
+
+  const r = await apiFetch(endpoint, {
+    method: 'PATCH',
+    body:   JSON.stringify(updates),
+  });
+
+  if (r?.ok) {
+    showToast('✔ Account updated successfully!');
+    document.getElementById('adminEditModal')?.remove();
+    // Update the table row live
+    const row = document.querySelector(`#adminTableBody tr[data-id="${id.toLowerCase()}"]`);
+    if (row) {
+      row.children[1].textContent = name;
+      row.children[3].textContent = dept;
+      if (year && row.children[4]) row.children[4].textContent = 'Year ' + year;
+      const badge = row.children[5]?.querySelector('.badge');
+      if (badge) {
+        badge.textContent = status === 'active' ? 'Active' : 'Inactive';
+        badge.className   = 'badge ' + (status === 'active' ? 'submitted' : 'pending');
+      }
+      // Update data attrs for filter
+      row.dataset.dept = dept;
+      if (year) row.dataset.year = year;
+    }
+  } else {
+    showToast(r?.data?.error || 'Failed to update account.');
+  }
+}
+
+async function deleteAccount(id, role) {
+  if (!confirm(`Delete account ${id}? This cannot be undone.`)) return;
+
+  const endpoint = role === 'Faculty'
+    ? `/api/admin/faculty/${id}`
+    : `/api/admin/students/${id}`;
+
+  const r = await apiFetch(endpoint, { method: 'DELETE' });
+
+  if (r?.ok) {
+    showToast('Account deleted.');
+    const row = document.querySelector(`#adminTableBody tr[data-id="${id.toLowerCase()}"]`);
+    if (row) row.remove();
+  } else {
+    showToast(r?.data?.error || 'Failed to delete.');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ADMIN — Post Notice (real API)
+// ═══════════════════════════════════════════════════════════════
+
+async function postNotice() {
+  const title    = document.querySelector('#adash-notices input[placeholder="Notice title..."]');
+  const audience = document.querySelectorAll('#adash-notices select')[0];
+  const priority = document.querySelectorAll('#adash-notices select')[1];
+  const content  = document.querySelector('#adash-notices textarea');
+
+  if (!title?.value || !content?.value) {
+    showToast('Please fill in title and content.');
+    return;
+  }
+
+  const audMap = {
+    'All Users':          'all',
+    'Students Only':      'students',
+    'Faculty Only':       'faculty',
+    'Specific Department':'department',
+  };
+  const priMap = { 'Normal':'normal', 'Important':'important', 'Urgent':'urgent' };
+
+  const payload = {
+    title:    title.value.trim(),
+    content:  content.value.trim(),
+    audience: audMap[audience?.options[audience.selectedIndex]?.text] || 'all',
+    priority: priMap[priority?.options[priority.selectedIndex]?.text] || 'normal',
+    active:   true,
+  };
+
+  const r = await apiFetch('/api/admin/notices', {
+    method: 'POST',
+    body:   JSON.stringify(payload),
+  });
+
+  if (r?.ok) {
+    showToast('✔ Notice published!');
+    if (title)   title.value   = '';
+    if (content) content.value = '';
+  } else {
+    showToast(r?.data?.error || 'Failed to post notice.');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ADMIN — Save System Settings (real API)
+// ═══════════════════════════════════════════════════════════════
+
+async function saveSystemSettings() {
+  const settings = {
+    studentPortalAccess:  document.getElementById('tog1')?.checked ?? true,
+    facultyPortalAccess:  document.getElementById('tog2')?.checked ?? true,
+    onlineFeePayment:     document.getElementById('tog3')?.checked ?? true,
+    assignmentSubmission: document.getElementById('tog4')?.checked ?? true,
+    maintenanceMode:      document.getElementById('tog5')?.checked ?? false,
+    emailNotifications:   document.getElementById('tog6')?.checked ?? true,
+  };
+
+  const r = await apiFetch('/api/admin/settings', {
+    method: 'PUT',
+    body:   JSON.stringify(settings),
+  });
+
+  showToast(r?.ok ? '✔ Settings saved!' : (r?.data?.error || 'Failed to save.'));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STUDENT — Load marks per department/semester from API
+// ═══════════════════════════════════════════════════════════════
+
+async function loadStudentMarks(semester) {
+  const sem = semester || 5;
+  const r   = await apiFetch(`/api/student/marks?semester=${sem}`);
+  if (!r?.ok) return;
+
+  const semData  = r.data.marks?.[sem] || {};
+  const subjects = semData.subjects || {};
+  const tbody    = document.querySelector(`#marks-table-${sem} tbody`);
+  if (!tbody) return;
+
+  const entries = Object.entries(subjects);
+  if (entries.length === 0) return;
+
+  tbody.innerHTML = entries.map(([subj, d]) => {
+    const gradeClass = d.grade === 'A+' || d.grade === 'A' ? 'grade-a' : 'grade-b';
+    return `<tr>
+      <td>${subj}</td>
+      <td>${d.assignmentAvg ?? '—'}</td>
+      <td>${d.internalAvg  ?? '—'}</td>
+      <td>${d.midSem       ?? '—'}</td>
+      <td>${d.semesterExam ?? '—'}</td>
+      <td>${d.total        ?? '—'}</td>
+      <td class="${gradeClass}">${d.grade ?? '—'}</td>
+    </tr>`;
+  }).join('');
+
+  // Update SGPA
+  const sgpaEl = document.querySelector(`#sem-block-${sem} .cgpa-display`);
+  if (sgpaEl) {
+    const sgpa = semData.sgpa;
+    sgpaEl.innerHTML = sgpa !== null
+      ? `Sem ${sem} SGPA: <strong>${sgpa} / 10.0</strong>`
+      : `Sem ${sem} SGPA: <strong style="color:var(--warning)">Pending semester results</strong>`;
+  }
+
+  // Update overall CGPA box
+  if (r.data.cgpa !== null) {
+    const cgpaRows = document.querySelectorAll('#cgpaOverallBox .cgpa-total-row .cgpa-val');
+    cgpaRows.forEach(el => {
+      el.innerHTML = `<strong>${r.data.cgpa} / 10.0</strong>`;
+    });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STUDENT — Load assignments filtered by own dept/semester
+// ═══════════════════════════════════════════════════════════════
+
+async function loadStudentAssignments() {
+  const user = JSON.parse(localStorage.getItem('kit_user') || '{}');
+  const sem  = user.semester || 5;
+  const r    = await apiFetch(`/api/student/assignments?semester=${sem}`);
+  if (!r?.ok) return;
+
+  const list  = document.querySelector('#dash-assignments .assignment-list');
+  if (!list) return;
+
+  const items = r.data.assignments || [];
+  if (items.length === 0) {
+    list.innerHTML = `<div style="color:var(--text-light);padding:1rem;">No assignments yet for Semester ${sem}.</div>`;
+    return;
+  }
+
+  const now = new Date();
+  list.innerHTML = items.map(a => {
+    const isPast = new Date(a.dueDate) < now;
+    const cls    = isPast ? 'graded' : 'pending';
+    return `
+      <div class="asgn-card ${cls}">
+        <div class="asgn-info">
+          <h5>${a.subject} — ${a.title}</h5>
+          <p>${a.description || ''}</p>
+          <span class="asgn-due">
+            <i class="fa fa-clock"></i> Due: ${a.dueDate}
+            &nbsp;|&nbsp; Max: ${a.maxMarks} marks
+          </span>
+        </div>
+        <div class="asgn-action">
+          <span class="badge ${isPast ? 'graded' : 'pending'}">${isPast ? 'Closed' : 'Pending'}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STUDENT — Load materials filtered by own dept/semester
+// ═══════════════════════════════════════════════════════════════
+
+async function loadStudentMaterials() {
+  const user = JSON.parse(localStorage.getItem('kit_user') || '{}');
+  const sem  = user.semester || 5;
+  const r    = await apiFetch(`/api/student/materials?semester=${sem}`);
+  if (!r?.ok) return;
+
+  const grid = document.querySelector('#dash-materials .material-grid');
+  if (!grid) return;
+
+  const items = r.data.materials || [];
+  if (items.length === 0) {
+    grid.innerHTML = `<div style="color:var(--text-light);padding:1rem;">No materials uploaded yet for Semester ${sem}.</div>`;
+    return;
+  }
+
+  const icons = { notes:'fa-file-pdf', slides:'fa-file-powerpoint', video:'fa-file-video', reference:'fa-book', assignment:'fa-tasks', other:'fa-file' };
+
+  grid.innerHTML = items.map(m => `
+    <div class="mat-card">
+      <i class="fa ${icons[m.type] || 'fa-file'}"></i>
+      <div>
+        <h5>${m.title}</h5>
+        <p>${m.uploadedByName || ''} · ${m.uploadedAt?.slice(0,10) || ''}</p>
+      </div>
+      ${m.fileUrl
+        ? `<a href="${m.fileUrl}" target="_blank" class="btn-sm"><i class="fa fa-download"></i></a>`
+        : `<button class="btn-sm" disabled><i class="fa fa-download"></i></button>`}
+    </div>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FACULTY — Save Attendance (real API)
+// ═══════════════════════════════════════════════════════════════
+
+async function saveFacultyAttendance() {
+  const courseEl = document.querySelector('#fdash-attendance select');
+  const dateEl   = document.querySelector('#fdash-attendance input[type="date"]');
+
+  if (!dateEl?.value) { showToast('Please select a date.'); return; }
+
+  const courseText = courseEl?.options[courseEl.selectedIndex]?.text || '';
+  // e.g. "Machine Learning — CSE 5A"
+  const subject    = courseText.split('—')[0].trim() || courseText;
+
+  // Parse dept from course text — look for known dept codes
+  const deptMatch  = courseText.match(/\b(CSE|EE|ME|CE|BT)\b/);
+  const department = deptMatch ? deptMatch[1] : 'CSE';
+
+  // Parse semester from course text — look for number after dept
+  const semMatch = courseText.match(/[A-Z]+\s*(\d)/);
+  const semester = semMatch ? parseInt(semMatch[1]) : 5;
+
+  // Collect all attendance radio values
+  const records = [];
+  document.querySelectorAll('#fdash-attendance .att-table tbody tr').forEach(row => {
+    const rollTd = row.children[0];
+    const nameTd = row.children[1];
+    if (!rollTd || !nameTd) return;
+
+    const rollNo      = rollTd.textContent.trim();
+    const studentName = nameTd.textContent.trim();
+    if (!rollNo || rollNo === 'Roll No.') return;
+
+    // Find which radio is checked (P / A / L)
+    const checked = row.querySelector('input[type="radio"]:checked');
+    const status  = checked ? checked.value : 'P';
+
+    records.push({ rollNo, studentName, status });
+  });
+
+  if (records.length === 0) { showToast('No student records found.'); return; }
+
+  const payload = {
+    subject,
+    semester,
+    department,
+    date:    dateEl.value,
+    records,
+  };
+
+  const r = await apiFetch('/api/faculty/attendance', {
+    method: 'POST',
+    body:   JSON.stringify(payload),
+  });
+
+  showToast(r?.ok
+    ? `✔ Attendance saved for ${records.length} students!`
+    : (r?.data?.error || 'Failed to save attendance.'));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// STUDENT — Update Profile (real API)
+// ═══════════════════════════════════════════════════════════════
+
+async function updateStudentProfile() {
+  const allInp  = document.querySelectorAll('#dash-profile input');
+  const pfEmail = document.querySelector('#dash-profile input[type="email"]');
+  const pfAddr  = document.querySelector('#dash-profile textarea');
+
+  const updates = {};
+  if (allInp[4]?.value) updates.mobile  = allInp[4].value.trim();
+  if (pfEmail?.value)   updates.email   = pfEmail.value.trim();
+  if (pfAddr?.value)    updates.address = pfAddr.value.trim();
+
+  if (Object.keys(updates).length === 0) {
+    showToast('Nothing to update.');
+    return;
+  }
+
+  const r = await apiFetch('/api/student/profile', {
+    method: 'PATCH',
+    body:   JSON.stringify(updates),
+  });
+
+  showToast(r?.ok ? '✔ Profile updated!' : (r?.data?.error || 'Failed to update profile.'));
 }
