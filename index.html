@@ -1062,7 +1062,7 @@
               <div class="pf-row"><label>Mobile (Editable)</label><input type="text" value="+91-9876543210"/></div>
               <div class="pf-row"><label>Email (Editable)</label><input type="email" value="arjun.sharma@kit.edu.in"/></div>
               <div class="pf-row"><label>Address</label><textarea rows="2">12B, Lake Gardens, Kolkata - 700045</textarea></div>
-              <button class="btn-primary" style="margin-top:1rem">Update Profile</button>
+              <button class="btn-primary" style="margin-top:1rem" onclick="updateStudentProfile()">Update Profile</button>
             </div>
           </div>
         </div>
@@ -1147,7 +1147,7 @@
               <tr><td>KIT2022CSE048</td><td>Priya Ghosh</td><td><input type="radio" name="att5" value="P" checked/></td><td><input type="radio" name="att5" value="A"/></td><td><input type="radio" name="att5" value="L"/></td></tr>
             </tbody>
           </table>
-          <button class="btn-primary" style="margin-top:1.2rem" onclick="alert('Attendance saved successfully!')"><i class="fa fa-save"></i> Save Attendance</button>
+          <button class="btn-primary" style="margin-top:1.2rem" onclick="saveFacultyAttendance()"><i class="fa fa-save"></i> Save Attendance</button>
         </div>
 
         <div class="dash-panel" id="fdash-marks">
@@ -1257,34 +1257,102 @@
 
         <div class="dash-panel" id="fdash-assignments">
           <h4>Manage Assignments</h4>
-          <div class="create-asgn">
+          <div class="create-asgn" id="assignmentForm">
             <h5>Create New Assignment</h5>
             <div class="form-row">
-              <div class="form-group"><label>Course</label><select><option>Machine Learning</option><option>Algorithms</option></select></div>
-              <div class="form-group"><label>Title</label><input type="text" placeholder="Assignment title"/></div>
+              <div class="form-group"><label>Course</label>
+                <select id="asgn-course">
+                  <option>Machine Learning (CSE)</option>
+                  <option>Algorithms (CSE)</option>
+                  <option>Software Engineering (CSE)</option>
+                  <option>Computer Networks (CSE)</option>
+                  <option>Cloud Computing (CSE)</option>
+                  <option>Database Systems (CSE)</option>
+                  <option>Operating Systems (CSE)</option>
+                  <option>Circuit Theory (EE)</option>
+                  <option>Power Systems (EE)</option>
+                  <option>Control Systems (EE)</option>
+                  <option>Fluid Mechanics (ME)</option>
+                  <option>Machine Design (ME)</option>
+                  <option>Thermodynamics (ME)</option>
+                  <option>Structural Analysis (CE)</option>
+                  <option>RCC Design (CE)</option>
+                  <option>Molecular Biology (BT)</option>
+                  <option>Genetic Engineering (BT)</option>
+                </select>
+              </div>
+              <div class="form-group"><label>Semester</label>
+                <select id="asgn-sem">
+                  <option value="1">Sem 1</option><option value="2">Sem 2</option>
+                  <option value="3">Sem 3</option><option value="4">Sem 4</option>
+                  <option value="5" selected>Sem 5</option><option value="6">Sem 6</option>
+                  <option value="7">Sem 7</option><option value="8">Sem 8</option>
+                </select>
+              </div>
             </div>
-            <div class="form-group"><label>Description</label><textarea rows="3" placeholder="Assignment details..."></textarea></div>
+            <div class="form-group"><label>Title</label><input id="asgn-title" type="text" placeholder="Assignment title"/></div>
+            <div class="form-group"><label>Description</label><textarea id="asgn-desc" rows="3" placeholder="Assignment details..."></textarea></div>
             <div class="form-row">
-              <div class="form-group"><label>Due Date</label><input type="date"/></div>
-              <div class="form-group"><label>Max Marks</label><input type="number" placeholder="10"/></div>
+              <div class="form-group"><label>Due Date</label><input id="asgn-due" type="date"/></div>
+              <div class="form-group"><label>Max Marks</label><input id="asgn-marks" type="number" value="10" placeholder="10"/></div>
             </div>
-            <button class="btn-primary" onclick="alert('Assignment created!')"><i class="fa fa-plus"></i> Create Assignment</button>
+            <button class="btn-primary" onclick="createAssignment()"><i class="fa fa-plus"></i> Create Assignment</button>
           </div>
+          <div id="facultyAssignmentList" style="margin-top:1.5rem;"></div>
         </div>
 
         <div class="dash-panel" id="fdash-materials">
           <h4>Upload Study Materials</h4>
-          <div class="upload-zone">
-            <i class="fa fa-cloud-upload-alt fa-3x"></i>
-            <p>Drag &amp; drop files here, or click to browse</p>
-            <input type="file" multiple style="display:none" id="fileInput"/>
-            <button class="btn-outline" onclick="document.getElementById('fileInput').click()">Choose Files</button>
+          <div class="create-asgn">
+            <h5>Add New Material</h5>
+            <div class="form-row">
+              <div class="form-group"><label>Title</label>
+                <input id="mat-title" type="text" placeholder="e.g. Unit 1 Notes — ML"/>
+              </div>
+              <div class="form-group"><label>Semester</label>
+                <select id="mat-sem">
+                  <option value="1">Sem 1</option><option value="2">Sem 2</option>
+                  <option value="3">Sem 3</option><option value="4">Sem 4</option>
+                  <option value="5" selected>Sem 5</option><option value="6">Sem 6</option>
+                  <option value="7">Sem 7</option><option value="8">Sem 8</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>Subject</label>
+                <select id="mat-subject">
+                  <option>Machine Learning (CSE)</option>
+                  <option>Algorithms (CSE)</option>
+                  <option>Software Engineering (CSE)</option>
+                  <option>Computer Networks (CSE)</option>
+                  <option>Cloud Computing (CSE)</option>
+                  <option>Database Systems (CSE)</option>
+                  <option>Circuit Theory (EE)</option>
+                  <option>Power Systems (EE)</option>
+                  <option>Fluid Mechanics (ME)</option>
+                  <option>Structural Analysis (CE)</option>
+                  <option>Molecular Biology (BT)</option>
+                </select>
+              </div>
+              <div class="form-group"><label>Type</label>
+                <select id="mat-type">
+                  <option>Lecture Notes</option>
+                  <option>Slides</option>
+                  <option>Assignment</option>
+                  <option>Reference Book</option>
+                  <option>Video</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group"><label>Link / URL <span style="font-weight:400;color:var(--text-light)">(Google Drive, YouTube, etc. — optional)</span></label>
+              <input id="mat-link" type="url" placeholder="https://drive.google.com/..."/>
+            </div>
+            <div class="form-group"><label>Description <span style="font-weight:400;color:var(--text-light)">(optional)</span></label>
+              <textarea id="mat-desc" rows="2" placeholder="Brief description..."></textarea>
+            </div>
+            <button class="btn-primary" onclick="uploadMaterial()"><i class="fa fa-upload"></i> Upload Material</button>
           </div>
-          <div class="form-row" style="margin-top:1.2rem">
-            <div class="form-group"><label>Course</label><select><option>Machine Learning</option><option>Algorithms</option></select></div>
-            <div class="form-group"><label>Material Type</label><select><option>Lecture Notes</option><option>Assignment</option><option>Reference Book</option><option>Video</option></select></div>
-          </div>
-          <button class="btn-primary" onclick="alert('Material uploaded!')"><i class="fa fa-upload"></i> Upload</button>
+          <div id="facultyMaterialList" style="margin-top:1.5rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:1rem;"></div>
         </div>
       </main>
     </div>
@@ -1379,16 +1447,16 @@
           <table class="simple-table" id="adminTable" style="margin-top:1rem">
             <thead><tr><th>ID</th><th>Name</th><th>Role</th><th>Dept</th><th>Year</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody id="adminTableBody">
-              <tr data-role="Student" data-dept="CSE" data-name="arjun sharma" data-id="kit2022cse047" data-year="3"><td>KIT2022CSE047</td><td>Arjun Sharma</td><td>Student</td><td>CSE</td><td>Year 3</td><td><span class="badge submitted">Active</span></td><td><button class="btn-sm">Edit</button> <button class="btn-sm danger">Delete</button></td></tr>
-              <tr data-role="Faculty" data-dept="CSE" data-name="dr. debarati roy" data-id="kit-fac-0042" data-year=""><td>KIT-FAC-0042</td><td>Dr. Debarati Roy</td><td>Faculty</td><td>CSE</td><td>—</td><td><span class="badge submitted">Active</span></td><td><button class="btn-sm">Edit</button> <button class="btn-sm danger">Delete</button></td></tr>
-              <tr data-role="Student" data-dept="EE" data-name="sneha pal" data-id="kit2023ee012" data-year="2"><td>KIT2023EE012</td><td>Sneha Pal</td><td>Student</td><td>EE</td><td>Year 2</td><td><span class="badge pending">Inactive</span></td><td><button class="btn-sm">Edit</button> <button class="btn-sm danger">Delete</button></td></tr>
-              <tr data-role="Faculty" data-dept="ME" data-name="prof. a. ghosh" data-id="kit-fac-0018" data-year=""><td>KIT-FAC-0018</td><td>Prof. A. Ghosh</td><td>Faculty</td><td>ME</td><td>—</td><td><span class="badge submitted">Active</span></td><td><button class="btn-sm">Edit</button> <button class="btn-sm danger">Delete</button></td></tr>
-              <tr data-role="Student" data-dept="CSE" data-name="rahul sen" data-id="kit2022cse003" data-year="3"><td>KIT2022CSE003</td><td>Rahul Sen</td><td>Student</td><td>CSE</td><td>Year 3</td><td><span class="badge submitted">Active</span></td><td><button class="btn-sm">Edit</button> <button class="btn-sm danger">Delete</button></td></tr>
-              <tr data-role="Student" data-dept="EE" data-name="ananya das" data-id="kit2023ee008" data-year="2"><td>KIT2023EE008</td><td>Ananya Das</td><td>Student</td><td>EE</td><td>Year 2</td><td><span class="badge submitted">Active</span></td><td><button class="btn-sm">Edit</button> <button class="btn-sm danger">Delete</button></td></tr>
-              <tr data-role="Student" data-dept="ME" data-name="rohan mukherjee" data-id="kit2022me015" data-year="3"><td>KIT2022ME015</td><td>Rohan Mukherjee</td><td>Student</td><td>ME</td><td>Year 3</td><td><span class="badge submitted">Active</span></td><td><button class="btn-sm">Edit</button> <button class="btn-sm danger">Delete</button></td></tr>
-              <tr data-role="Faculty" data-dept="EE" data-name="dr. r. chatterjee" data-id="kit-fac-0055" data-year=""><td>KIT-FAC-0055</td><td>Dr. R. Chatterjee</td><td>Faculty</td><td>EE</td><td>—</td><td><span class="badge submitted">Active</span></td><td><button class="btn-sm">Edit</button> <button class="btn-sm danger">Delete</button></td></tr>
-              <tr data-role="Student" data-dept="BT" data-name="priya ghosh" data-id="kit2022bt022" data-year="3"><td>KIT2022BT022</td><td>Priya Ghosh</td><td>Student</td><td>BT</td><td>Year 3</td><td><span class="badge submitted">Active</span></td><td><button class="btn-sm">Edit</button> <button class="btn-sm danger">Delete</button></td></tr>
-              <tr data-role="Student" data-dept="CE" data-name="sourav mondal" data-id="kit2023ce019" data-year="1"><td>KIT2023CE019</td><td>Sourav Mondal</td><td>Student</td><td>CE</td><td>Year 1</td><td><span class="badge pending">Inactive</span></td><td><button class="btn-sm">Edit</button> <button class="btn-sm danger">Delete</button></td></tr>
+              <tr data-role="Student" data-dept="CSE" data-name="arjun sharma" data-id="kit2022cse047" data-year="3"><td>KIT2022CSE047</td><td>Arjun Sharma</td><td>Student</td><td>CSE</td><td>Year 3</td><td><span class="badge submitted">Active</span></td><td><button class="btn-sm" onclick="openEditModal('KIT2022CSE047','Student')">Edit</button> <button class="btn-sm danger" onclick="deleteAccount('KIT2022CSE047','Student')">Delete</button></td></tr>
+              <tr data-role="Faculty" data-dept="CSE" data-name="dr. debarati roy" data-id="kit-fac-0042" data-year=""><td>KIT-FAC-0042</td><td>Dr. Debarati Roy</td><td>Faculty</td><td>CSE</td><td>—</td><td><span class="badge submitted">Active</span></td><td><button class="btn-sm" onclick="openEditModal('KIT-FAC-0042','Faculty')">Edit</button> <button class="btn-sm danger" onclick="deleteAccount('KIT-FAC-0042','Faculty')">Delete</button></td></tr>
+              <tr data-role="Student" data-dept="EE" data-name="sneha pal" data-id="kit2023ee012" data-year="2"><td>KIT2023EE012</td><td>Sneha Pal</td><td>Student</td><td>EE</td><td>Year 2</td><td><span class="badge pending">Inactive</span></td><td><button class="btn-sm" onclick="openEditModal('KIT2023EE012','Student')">Edit</button> <button class="btn-sm danger" onclick="deleteAccount('KIT2023EE012','Student')">Delete</button></td></tr>
+              <tr data-role="Faculty" data-dept="ME" data-name="prof. a. ghosh" data-id="kit-fac-0018" data-year=""><td>KIT-FAC-0018</td><td>Prof. A. Ghosh</td><td>Faculty</td><td>ME</td><td>—</td><td><span class="badge submitted">Active</span></td><td><button class="btn-sm" onclick="openEditModal('KIT-FAC-0018','Faculty')">Edit</button> <button class="btn-sm danger" onclick="deleteAccount('KIT-FAC-0018','Faculty')">Delete</button></td></tr>
+              <tr data-role="Student" data-dept="CSE" data-name="rahul sen" data-id="kit2022cse003" data-year="3"><td>KIT2022CSE003</td><td>Rahul Sen</td><td>Student</td><td>CSE</td><td>Year 3</td><td><span class="badge submitted">Active</span></td><td><button class="btn-sm" onclick="openEditModal('KIT2022CSE003','Student')">Edit</button> <button class="btn-sm danger" onclick="deleteAccount('KIT2022CSE003','Student')">Delete</button></td></tr>
+              <tr data-role="Student" data-dept="EE" data-name="ananya das" data-id="kit2023ee008" data-year="2"><td>KIT2023EE008</td><td>Ananya Das</td><td>Student</td><td>EE</td><td>Year 2</td><td><span class="badge submitted">Active</span></td><td><button class="btn-sm" onclick="openEditModal('KIT2023EE008','Student')">Edit</button> <button class="btn-sm danger" onclick="deleteAccount('KIT2023EE008','Student')">Delete</button></td></tr>
+              <tr data-role="Student" data-dept="ME" data-name="rohan mukherjee" data-id="kit2022me015" data-year="3"><td>KIT2022ME015</td><td>Rohan Mukherjee</td><td>Student</td><td>ME</td><td>Year 3</td><td><span class="badge submitted">Active</span></td><td><button class="btn-sm" onclick="openEditModal('KIT2022ME015','Student')">Edit</button> <button class="btn-sm danger" onclick="deleteAccount('KIT2022ME015','Student')">Delete</button></td></tr>
+              <tr data-role="Faculty" data-dept="EE" data-name="dr. r. chatterjee" data-id="kit-fac-0055" data-year=""><td>KIT-FAC-0055</td><td>Dr. R. Chatterjee</td><td>Faculty</td><td>EE</td><td>—</td><td><span class="badge submitted">Active</span></td><td><button class="btn-sm" onclick="openEditModal('KIT-FAC-0055','Faculty')">Edit</button> <button class="btn-sm danger" onclick="deleteAccount('KIT-FAC-0055','Faculty')">Delete</button></td></tr>
+              <tr data-role="Student" data-dept="BT" data-name="priya ghosh" data-id="kit2022bt022" data-year="3"><td>KIT2022BT022</td><td>Priya Ghosh</td><td>Student</td><td>BT</td><td>Year 3</td><td><span class="badge submitted">Active</span></td><td><button class="btn-sm" onclick="openEditModal('KIT2022BT022','Student')">Edit</button> <button class="btn-sm danger" onclick="deleteAccount('KIT2022BT022','Student')">Delete</button></td></tr>
+              <tr data-role="Student" data-dept="CE" data-name="sourav mondal" data-id="kit2023ce019" data-year="1"><td>KIT2023CE019</td><td>Sourav Mondal</td><td>Student</td><td>CE</td><td>Year 1</td><td><span class="badge pending">Inactive</span></td><td><button class="btn-sm" onclick="openEditModal('KIT2023CE019','Student')">Edit</button> <button class="btn-sm danger" onclick="deleteAccount('KIT2023CE019','Student')">Delete</button></td></tr>
             </tbody>
           </table>
           <div id="adminResultCount" style="margin-top:0.7rem; font-size:0.82rem; color:var(--text-light);"></div>
@@ -1400,7 +1468,7 @@
           <div class="form-group"><label>Audience</label><select><option>All Users</option><option>Students Only</option><option>Faculty Only</option><option>Specific Department</option></select></div>
           <div class="form-group"><label>Priority</label><select><option>Normal</option><option>Important</option><option>Urgent</option></select></div>
           <div class="form-group"><label>Notice Content</label><textarea rows="5" placeholder="Write the notice here..."></textarea></div>
-          <button class="btn-primary" onclick="alert('Notice posted!')"><i class="fa fa-bullhorn"></i> Publish Notice</button>
+          <button class="btn-primary" onclick="postNotice()"><i class="fa fa-bullhorn"></i> Publish Notice</button>
         </div>
 
         <div class="dash-panel" id="adash-settings">
@@ -1413,7 +1481,7 @@
             <div class="setting-item"><label>Maintenance Mode</label><div class="toggle-wrap"><input type="checkbox" id="tog5"/><label for="tog5" class="toggle-label"></label></div></div>
             <div class="setting-item"><label>Email Notifications</label><div class="toggle-wrap"><input type="checkbox" id="tog6" checked/><label for="tog6" class="toggle-label"></label></div></div>
           </div>
-          <button class="btn-primary" style="margin-top:1.5rem" onclick="alert('Settings saved!')"><i class="fa fa-save"></i> Save Settings</button>
+          <button class="btn-primary" style="margin-top:1.5rem" onclick="saveSystemSettings()"><i class="fa fa-save"></i> Save Settings</button>
         </div>
       </main>
     </div>
