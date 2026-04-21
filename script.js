@@ -1326,3 +1326,197 @@ function checkScrollShadow() {
       : '0 2px 16px rgba(26,60,110,0.10)';
   });
 }
+
+// ═══════════════════════════════════════════════════════════════
+// PDF / FILE UPLOAD — Firebase Storage via signed URL
+// ═══════════════════════════════════════════════════════════════
+
+let selectedFile  = null;   // the File object chosen by user
+let uploadedFileUrl = '';   // URL after successful upload
+
+function handleFileSelect(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const maxMB = 10;
+  if (file.size > maxMB * 1024 * 1024) {
+    showToast('File is too large. Maximum size is ' + maxMB + ' MB.');
+    input.value = '';
+    return;
+  }
+
+  selectedFile = file;
+  uploadedFileUrl = '';  // reset previous upload
+
+  const label = document.getElementById('mat-file-label');
+  if (label) label.textContent = '📎 ' + file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+
+  // Auto-fill title if empty
+  const titleEl = document.getElementById('mat-title');
+  if (titleEl && !titleEl.value) {
+    titleEl.value = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+  }
+}
+
+// Drag and drop support
+document.addEventListener('DOMContentLoaded', () => {
+  const zone = document.getElementById('mat-upload-zone');
+  if (!zone) return;
+
+  zone.addEventListener('dragover', e => {
+    e.preventDefault();
+    zone.style.borderColor = 'var(--navy)';
+    zone.style.background  = 'var(--sky)';
+  });
+
+  zone.addEventListener('dragleave', () => {
+    zone.style.borderColor = '';
+    zone.style.background  = '';
+  });
+
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.style.borderColor = '';
+    zone.style.background  = '';
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const input = document.getElementById('mat-file');
+    if (input) {
+      // Create a DataTransfer to assign to input.files
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      handleFileSelect(input);
+    }
+  });
+});
+
+async function uploadMaterial() {
+  const user      = JSON.parse(localStorage.getItem('kit_user') || '{}');
+  const titleEl   = document.getElementById('mat-title');
+  const subjectEl = document.getElementById('mat-subject');
+  const typeEl    = document.getElementById('mat-type');
+  const linkEl    = document.getElementById('mat-link');
+  const descEl    = document.getElementById('mat-desc');
+  const semEl     = document.getElementById('mat-sem');
+  const btn       = document.getElementById('mat-upload-btn');
+
+  if (!titleEl?.value?.trim()) { showToast('Please enter a title.'); return; }
+
+  // Need either a file or a link
+  if (!selectedFile && !linkEl?.value?.trim()) {
+    showToast('Please choose a file to upload or paste a link.');
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+
+  let fileUrl = linkEl?.value?.trim() || '';
+
+  // If a file was selected, upload it first
+  if (selectedFile) {
+    fileUrl = await uploadFileToStorage(selectedFile);
+    if (!fileUrl) {
+      if (btn) btn.disabled = false;
+      return;
+    }
+  }
+
+  // Now save the material record to Firestore via the API
+  const courseText = subjectEl?.options[subjectEl.selectedIndex]?.text || '';
+  const subMatch   = courseText.match(/^(.+?)\s*\((\w+)\)$/);
+  const subject    = subMatch ? subMatch[1].trim() : courseText;
+  const dept       = subMatch ? subMatch[2] : (user.department || 'CSE');
+
+  const typeMap = {
+    'Lecture Notes':'notes', 'Slides':'slides', 'Assignment':'assignment',
+    'Reference Book':'reference', 'Video':'video', 'Other':'other'
+  };
+  const rawType = typeEl?.options[typeEl?.selectedIndex]?.text || 'Lecture Notes';
+
+  const r = await apiFetch('/api/faculty/materials', {
+    method: 'POST',
+    body: JSON.stringify({
+      title:       titleEl.value.trim(),
+      subject,
+      semester:    parseInt(semEl?.value) || 5,
+      department:  dept,
+      type:        typeMap[rawType] || 'notes',
+      fileUrl,
+      description: descEl?.value?.trim() || '',
+      fileName:    selectedFile ? selectedFile.name : titleEl.value.trim(),
+    }),
+  });
+
+  if (r?.ok) {
+    showToast('✔ Material uploaded successfully!');
+    // Reset form
+    titleEl.value = '';
+    if (linkEl)  linkEl.value  = '';
+    if (descEl)  descEl.value  = '';
+    const fileLabel = document.getElementById('mat-file-label');
+    if (fileLabel) fileLabel.textContent = 'Click to choose a file or drag and drop here';
+    selectedFile    = null;
+    uploadedFileUrl = '';
+    const fileInput = document.getElementById('mat-file');
+    if (fileInput) fileInput.value = '';
+    loadFacultyMaterials();
+  } else {
+    showToast(r?.data?.error || 'Failed to save material record.');
+  }
+
+  if (btn) btn.disabled = false;
+}
+
+async function uploadFileToStorage(file) {
+  const progressWrap = document.getElementById('mat-upload-progress');
+  const progressBar  = document.getElementById('mat-progress-bar');
+  const progressText = document.getElementById('mat-progress-text');
+
+  if (progressWrap) progressWrap.style.display = 'block';
+  if (progressText) progressText.textContent   = 'Getting upload URL...';
+  if (progressBar)  progressBar.style.width    = '10%';
+
+  // Step 1: Get a signed upload URL from our backend
+  const sigRes = await apiFetch('/api/upload/signed-url', {
+    method: 'POST',
+    body: JSON.stringify({ fileName: file.name, contentType: file.type || 'application/octet-stream' }),
+  });
+
+  if (!sigRes?.ok) {
+    showToast(sigRes?.data?.error || 'Failed to get upload URL.');
+    if (progressWrap) progressWrap.style.display = 'none';
+    return null;
+  }
+
+  const { uploadUrl, publicUrl } = sigRes.data;
+
+  if (progressText) progressText.textContent = 'Uploading file...';
+  if (progressBar)  progressBar.style.width  = '30%';
+
+  // Step 2: Upload file directly to Firebase Storage using the signed URL
+  try {
+    const uploadRes = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    });
+
+    if (!uploadRes.ok) {
+      showToast('Upload to storage failed. Try a Google Drive link instead.');
+      if (progressWrap) progressWrap.style.display = 'none';
+      return null;
+    }
+
+    if (progressBar)  progressBar.style.width    = '100%';
+    if (progressText) progressText.textContent   = '✔ File uploaded!';
+    setTimeout(() => { if (progressWrap) progressWrap.style.display = 'none'; }, 2000);
+
+    return publicUrl;
+
+  } catch (err) {
+    showToast('Upload failed: ' + err.message);
+    if (progressWrap) progressWrap.style.display = 'none';
+    return null;
+  }
+}
