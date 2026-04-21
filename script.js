@@ -36,12 +36,35 @@ function setDate() {
 }
 
 // ── Session restore on page reload ───────────────────────────
+function decodeJwtPayload(token) {
+  try {
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(base64));
+  } catch { return null; }
+}
+
 function restoreSession() {
   const token = localStorage.getItem('kit_token');
   const raw   = localStorage.getItem('kit_user');
   if (!token || !raw) return;
   try {
-    const user  = JSON.parse(raw);
+    const user    = JSON.parse(raw);
+    const payload = decodeJwtPayload(token);
+
+    // Validate JWT is not expired
+    if (!payload || (payload.exp && payload.exp * 1000 < Date.now())) {
+      localStorage.removeItem('kit_token');
+      localStorage.removeItem('kit_user');
+      return;
+    }
+
+    // Validate JWT role matches stored user role (prevents stale token mismatch)
+    if (payload.role && user.role && payload.role !== user.role) {
+      localStorage.removeItem('kit_token');
+      localStorage.removeItem('kit_user');
+      return;
+    }
+
     currentUser = user.role;
   } catch {
     localStorage.removeItem('kit_token');
