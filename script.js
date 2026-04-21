@@ -3,7 +3,7 @@
    script.js  —  Full frontend logic + API integration
    ============================================================ */
 
-const API = 'https://kit-backend.vercel.app';
+const API = 'https://kit-backend.vercel.app'; // backend URL
 
 // ── State ────────────────────────────────────────────────────
 let currentPage = 'home';
@@ -257,15 +257,39 @@ function populateDashboard(role, user) {
     const addr = document.querySelector('#dash-profile textarea');
     if (addr) addr.value = user.address || '';
 
-    // Load all student data
+    // Clear hardcoded dashboard stats before loading live data
+    const summaryNums = document.querySelectorAll('#dash-overview .sc-num');
+    if (summaryNums[0]) summaryNums[0].textContent = '—%';
+    if (summaryNums[1]) summaryNums[1].textContent = '—';
+    if (summaryNums[2]) summaryNums[2].textContent = '—';
+
+    // Clear preloaded attendance bars
+    const attGrid = document.querySelector('#dash-attendance .att-grid');
+    if (attGrid) attGrid.innerHTML = '<p style="color:var(--text-light);padding:1rem;font-size:0.9rem;">Loading attendance...</p>';
+
+    // Clear preloaded assignments
+    const asgnList = document.querySelector('#dash-assignments .assignment-list');
+    if (asgnList) asgnList.innerHTML = '<p style="color:var(--text-light);padding:1rem;font-size:0.9rem;">Loading assignments...</p>';
+
+    // Clear preloaded materials
+    const matGrid = document.querySelector('#dash-materials .material-grid');
+    if (matGrid) matGrid.innerHTML = '<p style="color:var(--text-light);padding:1rem;font-size:0.9rem;">Loading materials...</p>';
+
+    // Clear preloaded fee data
+    const feeCard = document.querySelector('#dash-fee .fee-status-card');
+    if (feeCard) feeCard.innerHTML = '<p style="color:var(--text-light);padding:1rem;font-size:0.9rem;">Loading fee records...</p>';
+
+    // Load all student data from API
+    const sem = user.semester || 1;
+    const dept = user.department || 'CSE';
     loadStudentNotices();
     loadStudentFees();
-    loadStudentAttendance(user.semester || 5);
-    loadStudentMarks(user.semester || 5);
-    loadStudentAssignments(user.semester || 5, user.department || 'CSE');
-    loadStudentMaterials(user.semester || 5, user.department || 'CSE');
+    loadStudentAttendance(sem);
+    loadStudentMarks(sem);
+    loadStudentAssignments(sem, dept);
+    loadStudentMaterials(sem, dept);
     // Populate timetable and labels with dept/sem specific content
-    populateStudentOverview(user.department || 'CSE', user.semester || 5);
+    populateStudentOverview(dept, sem);
   }
 
   if (role === 'faculty') {
@@ -307,11 +331,29 @@ async function loadStudentNotices() {
 
 // ── Attendance ────────────────────────────────────────────────
 async function loadStudentAttendance(semester) {
-  const r = await apiFetch('/api/student/attendance?semester=' + (semester || 5));
-  if (!r?.ok) return;
+  const r = await apiFetch('/api/student/attendance?semester=' + (semester || 1));
+  if (!r?.ok) {
+    // Clear loading text on error
+    const grid = document.querySelector('#dash-attendance .att-grid');
+    if (grid) grid.innerHTML = '<p style="color:var(--text-light);padding:1rem;font-size:0.9rem;">No attendance records found.</p>';
+    return;
+  }
   const summary = r.data.summary || [];
   const grid = document.querySelector('#dash-attendance .att-grid');
-  if (!grid || !summary.length) return;
+  if (!grid) return;
+
+  if (!summary.length) {
+    grid.innerHTML = '<p style="color:var(--text-light);padding:1rem;font-size:0.9rem;">No attendance records found for this semester.</p>';
+    // Update dashboard card
+    const attNum = document.querySelector('#dash-overview .summary-card.blue .sc-num');
+    if (attNum) attNum.textContent = '—%';
+    return;
+  }
+
+  // Compute overall average attendance
+  const avgPct = Math.round(summary.reduce((sum, s) => sum + s.percentage, 0) / summary.length);
+  const attNum = document.querySelector('#dash-overview .summary-card.blue .sc-num');
+  if (attNum) attNum.textContent = avgPct + '%';
 
   grid.innerHTML = summary.map(s => {
     const pct = s.percentage;
@@ -328,17 +370,16 @@ async function loadStudentAttendance(semester) {
 
 // ── Marks ─────────────────────────────────────────────────────
 async function loadStudentMarks(semester) {
-  const sem = semester || 5;
+  const sem = semester || 1;
   const r   = await apiFetch('/api/student/marks?semester=' + sem);
   if (!r?.ok) return;
 
   const semData  = r.data.marks?.[sem] || {};
   const subjects = semData.subjects    || {};
   const entries  = Object.entries(subjects);
-  if (!entries.length) return;
 
   const tbody = document.querySelector('#marks-table-' + sem + ' tbody');
-  if (tbody) {
+  if (tbody && entries.length) {
     tbody.innerHTML = entries.map(([subj, d]) => {
       const gc = (!d.grade || d.grade === 'F') ? '' : (d.grade.startsWith('A') ? 'grade-a' : 'grade-b');
       return `<tr>
@@ -361,30 +402,46 @@ async function loadStudentMarks(semester) {
       : `Sem ${sem} SGPA: <strong style="color:var(--warning)">Pending semester results</strong>`;
   }
 
-  // Overall CGPA
-  if (r.data.cgpa !== null) {
+  // Overall CGPA — update summary card
+  if (r.data.cgpa !== null && r.data.cgpa !== undefined) {
     const cgpaEl = document.querySelector('#cgpaOverallBox .cgpa-total-row .cgpa-val');
     if (cgpaEl) cgpaEl.innerHTML = '<strong>' + r.data.cgpa + ' / 10.0</strong>';
+    // Update dashboard summary card
+    const cgpaNumEl = document.querySelector('#dash-overview .summary-card.green .sc-num');
+    if (cgpaNumEl) cgpaNumEl.textContent = r.data.cgpa;
+  } else {
+    const cgpaNumEl = document.querySelector('#dash-overview .summary-card.green .sc-num');
+    if (cgpaNumEl) cgpaNumEl.textContent = '—';
   }
 }
 
 // ── Assignments (student view) ────────────────────────────────
 async function loadStudentAssignments(semester, dept) {
-  const sem = semester || 5;
+  const sem = semester || 1;
   const r   = await apiFetch('/api/student/assignments?semester=' + sem);
-  if (!r?.ok) return;
+  if (!r?.ok) {
+    const list = document.querySelector('#dash-assignments .assignment-list');
+    if (list) list.innerHTML = '<div style="color:var(--text-light);padding:1rem;font-size:0.9rem;">No assignments found.</div>';
+    return;
+  }
 
   const list  = document.querySelector('#dash-assignments .assignment-list');
   if (!list) return;
 
   const items = r.data.assignments || [];
+
+  // Update pending tasks count in dashboard
+  const now = new Date();
+  const pendingCount = items.filter(a => new Date(a.dueDate) >= now).length;
+  const tasksNum = document.querySelector('#dash-overview .summary-card.orange .sc-num');
+  if (tasksNum) tasksNum.textContent = pendingCount;
+
   if (!items.length) {
     list.innerHTML = `<div style="color:var(--text-light);padding:1rem;font-size:0.9rem;">
       No assignments posted yet for Semester ${sem}.</div>`;
     return;
   }
 
-  const now = new Date();
   list.innerHTML = items.map(a => {
     const past = new Date(a.dueDate) < now;
     const cls  = past ? 'graded' : 'pending';
@@ -407,9 +464,13 @@ async function loadStudentAssignments(semester, dept) {
 
 // ── Materials (student view) ──────────────────────────────────
 async function loadStudentMaterials(semester, dept) {
-  const sem = semester || 5;
+  const sem = semester || 1;
   const r   = await apiFetch('/api/student/materials?semester=' + sem);
-  if (!r?.ok) return;
+  if (!r?.ok) {
+    const grid = document.querySelector('#dash-materials .material-grid');
+    if (grid) grid.innerHTML = '<div style="color:var(--text-light);padding:1rem;font-size:0.9rem;">No study materials found.</div>';
+    return;
+  }
 
   const grid  = document.querySelector('#dash-materials .material-grid');
   if (!grid) return;
@@ -1647,6 +1708,9 @@ function populateStudentOverview(dept, semester) {
     marksLabel.innerHTML = `<i class="fa fa-info-circle"></i>
       Semester ${semester} is ongoing. Semester exam marks not yet entered — SGPA will calculate after results.`;
   }
+
+  // Switch marks tab to student's current semester
+  switchSem(semester);
 }
 
 // ── Populate faculty dashboard with their dept content ────────
