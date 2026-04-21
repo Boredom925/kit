@@ -264,6 +264,8 @@ function populateDashboard(role, user) {
     loadStudentMarks(user.semester || 5);
     loadStudentAssignments(user.semester || 5, user.department || 'CSE');
     loadStudentMaterials(user.semester || 5, user.department || 'CSE');
+    // Populate timetable and labels with dept/sem specific content
+    populateStudentOverview(user.department || 'CSE', user.semester || 5);
   }
 
   if (role === 'faculty') {
@@ -273,7 +275,8 @@ function populateDashboard(role, user) {
     if (els[0]) els[0].textContent = 'ID: ' + (user.facultyId || user.id || '');
     if (els[1]) els[1].textContent = 'Dept: ' + (user.department || '');
 
-    // Pre-load faculty lists
+    // Populate dashboard with dept-specific content
+    populateFacultyOverview(user.department || 'CSE');
     loadFacultyAssignments();
     loadFacultyMaterials();
   }
@@ -1021,17 +1024,28 @@ async function submitCreateAccount() {
   const mobile   = document.getElementById('create-mobile')?.value?.trim();
   const password = document.getElementById('create-password')?.value;
 
-  if (!id)       { showToast('Please enter an ID.');          return; }
-  if (!name)     { showToast('Please enter a name.');         return; }
-  if (!password || password.length < 8) { showToast('Password must be at least 8 characters.'); return; }
+  if (!id)       { showToast('Please enter an ID.');   return; }
+  if (!name)     { showToast('Please enter a name.');  return; }
+  if (!password || password.length < 6) {
+    showToast('Password must be at least 6 characters.'); return;
+  }
+
+  // Build payload — only include optional fields if they have a value
+  // Empty strings cause validation failures on the backend
+  const opt = {};
+  if (email)  opt.email  = email;
+  if (mobile) opt.mobile = mobile;
 
   let endpoint, payload;
   if (role === 'student') {
     endpoint = '/api/admin/students';
-    payload  = { rollNo: id, name, department: dept, year, semester, email, mobile, password, status:'active' };
+    payload  = { rollNo: id, name, department: dept, year, semester,
+                 ...opt, password, status:'active' };
   } else {
     endpoint = '/api/admin/faculty';
-    payload  = { facultyId: id, name, department: dept, designation: desig||'Faculty', email, mobile, password, status:'active' };
+    payload  = { facultyId: id, name, department: dept,
+                 designation: desig || 'Faculty',
+                 ...opt, password, status:'active' };
   }
 
   const r = await apiFetch(endpoint, { method:'POST', body: JSON.stringify(payload) });
@@ -1518,5 +1532,253 @@ async function uploadFileToStorage(file) {
     showToast('Upload failed: ' + err.message);
     if (progressWrap) progressWrap.style.display = 'none';
     return null;
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// SYLLABUS DATA — subjects per dept per semester
+// Used to generate timetables and subject lists dynamically
+// ═══════════════════════════════════════════════════════════════
+
+const SYLLABUS = {
+  CSE: {
+    1: ['Mathematics I','Physics','Chemistry','Programming in C','Engineering Graphics'],
+    2: ['Mathematics II','Data Structures','Digital Electronics','Communication Skills'],
+    3: ['Algorithms','Computer Organization','Discrete Mathematics','OOP with Java'],
+    4: ['Operating Systems','Database Systems','Computer Networks','Software Engineering'],
+    5: ['Machine Learning','Computer Networks','Software Engineering','Cloud Computing','ML Lab'],
+    6: ['Cloud Computing','Information Security','Compiler Design','Minor Project'],
+    7: ['Big Data Analytics','Deep Learning','Elective I','Major Project Phase I'],
+    8: ['Major Project Phase II','Internship Report'],
+  },
+  EE: {
+    1: ['Mathematics I','Physics','Basic Electrical Engineering','C Programming'],
+    2: ['Mathematics II','Circuit Theory','Electromagnetic Fields','Engineering Drawing'],
+    3: ['Analog Electronics','Electrical Machines I','Signals & Systems','Maths III'],
+    4: ['Electrical Machines II','Control Systems','Power Electronics','Microprocessors'],
+    5: ['Power Systems','Switchgear & Protection','High Voltage Engg','Elective I'],
+    6: ['Utilization of Electrical Energy','Renewable Energy','Smart Grid','Elective II'],
+    7: ['Power System Protection','FACTS Devices','Elective III','Major Project I'],
+    8: ['Major Project II','Industrial Training'],
+  },
+  ME: {
+    1: ['Mathematics I','Physics','Engineering Mechanics','Engineering Drawing'],
+    2: ['Mathematics II','Thermodynamics','Manufacturing Processes I','Material Science'],
+    3: ['Fluid Mechanics','Strength of Materials','Kinematics of Machines','Maths III'],
+    4: ['Machine Design','Heat Transfer','Manufacturing Processes II','Metrology'],
+    5: ['Theory of Machines','IC Engines','Refrigeration & AC','Elective I'],
+    6: ['Robotics','CAD/CAM','Industrial Engineering','Elective II'],
+    7: ['Finite Element Analysis','Automobile Engineering','Elective III','Major Project I'],
+    8: ['Major Project II','Industrial Training'],
+  },
+  CE: {
+    1: ['Mathematics I','Chemistry','Engineering Mechanics','Civil Engineering Drawing'],
+    2: ['Mathematics II','Surveying','Building Materials','Fluid Mechanics I'],
+    3: ['Structural Analysis','Fluid Mechanics II','Geotechnical Engineering','Maths III'],
+    4: ['RCC Design','Transportation Engineering','Environmental Engineering I','Hydraulics'],
+    5: ['Steel Design','Foundation Engineering','Water Resources Engineering','Elective I'],
+    6: ['Construction Management','Environmental Engineering II','Town Planning','Elective II'],
+    7: ['Bridge Engineering','Elective III','Disaster Management','Major Project I'],
+    8: ['Major Project II','Field Training'],
+  },
+  BT: {
+    1: ['Mathematics','Chemistry','Biology','Biochemistry Basics','Lab Skills'],
+    2: ['Cell Biology','Genetics','Microbiology','Organic Chemistry'],
+    3: ['Molecular Biology','Immunology','Biophysics','Analytical Techniques'],
+    4: ['Genetic Engineering','Bioprocess Engineering','Bioinformatics','Maths for BT'],
+    5: ['Plant Biotechnology','Animal Biotechnology','Fermentation Technology','Elective I'],
+    6: ['Industrial Biotechnology','Nanobiotechnology','Environmental Biotech','Elective II'],
+    7: ['Clinical Research','Regulatory Affairs','Elective III','Major Project I'],
+    8: ['Major Project II','Internship Report'],
+  },
+};
+
+// Room codes per dept
+const ROOMS = {
+  CSE: ['CS-101','CS-201','CS-301','CS-302','CS-303','CS-304','CS Lab 1','CS Lab 2'],
+  EE:  ['EE-101','EE-201','EE-301','EE-302','EE Lab 1','EE Lab 2'],
+  ME:  ['ME-101','ME-201','ME-301','ME-302','ME Lab 1','ME Lab 2'],
+  CE:  ['CE-101','CE-201','CE-301','CE-302','CE Lab 1','CE Drawing Hall'],
+  BT:  ['BT-101','BT-201','BT-301','BT Lab 1','BT Lab 2','BT Research Lab'],
+};
+
+// Day of week timetable (cycles Mon–Fri)
+function getTodayTimetable(dept, semester) {
+  const subjects = SYLLABUS[dept]?.[semester] || [];
+  if (!subjects.length) return [];
+
+  const day   = new Date().getDay(); // 0=Sun,1=Mon...
+  const rooms = ROOMS[dept] || ['Room 101','Room 102','Room 103'];
+  const times = ['9:00 AM','10:00 AM','11:00 AM','12:00 PM','2:00 PM','3:00 PM'];
+
+  // Rotate subjects based on day so each day looks different
+  const offset = (day % subjects.length);
+  const daySubjects = [];
+  for (let i = 0; i < Math.min(5, subjects.length); i++) {
+    daySubjects.push(subjects[(offset + i) % subjects.length]);
+  }
+
+  return daySubjects.map((subj, i) => ({
+    time:    times[i] || (i + 8) + ':00 AM',
+    subject: subj,
+    room:    rooms[i % rooms.length],
+  }));
+}
+
+// ── Populate student dashboard with dept/sem specific content ─
+function populateStudentOverview(dept, semester) {
+  // Timetable
+  const timetable = getTodayTimetable(dept, semester);
+  const tbody     = document.querySelector('#dash-overview .dash-widget table tbody');
+  if (tbody && timetable.length) {
+    tbody.innerHTML = timetable.map(r =>
+      `<tr><td>${r.time}</td><td>${r.subject}</td><td>${r.room}</td></tr>`
+    ).join('');
+  }
+
+  // Update attendance header
+  const attHeader = document.querySelector('#dash-attendance h4');
+  if (attHeader) attHeader.textContent = `Attendance Overview — ${dept} Semester ${semester}`;
+
+  // Update marks header
+  const marksLabel = document.querySelector('#dash-marks .current-sem-notice');
+  if (marksLabel) {
+    marksLabel.innerHTML = `<i class="fa fa-info-circle"></i>
+      Semester ${semester} is ongoing. Semester exam marks not yet entered — SGPA will calculate after results.`;
+  }
+}
+
+// ── Populate faculty dashboard with their dept content ────────
+function populateFacultyOverview(dept) {
+  const coursesByDept = {
+    CSE: [
+      { course:'Machine Learning',     section:'CSE-5A & 5B', students:90 },
+      { course:'Algorithms',            section:'CSE-3A',      students:45 },
+      { course:'Software Engineering',  section:'CSE-5C',      students:45 },
+      { course:'Database Systems',      section:'CSE-4A',      students:60 },
+    ],
+    EE: [
+      { course:'Power Systems',         section:'EE-5A',       students:60 },
+      { course:'Control Systems',       section:'EE-4A',       students:60 },
+      { course:'Electrical Machines II',section:'EE-4B',       students:60 },
+      { course:'High Voltage Engg',     section:'EE-6A',       students:55 },
+    ],
+    ME: [
+      { course:'Theory of Machines',    section:'ME-5A',       students:60 },
+      { course:'Heat Transfer',         section:'ME-4A',       students:60 },
+      { course:'Fluid Mechanics',       section:'ME-3A',       students:60 },
+      { course:'CAD/CAM',               section:'ME-6A',       students:55 },
+    ],
+    CE: [
+      { course:'Structural Analysis',   section:'CE-3A',       students:50 },
+      { course:'RCC Design',            section:'CE-4A',       students:50 },
+      { course:'Foundation Engineering',section:'CE-5A',       students:45 },
+      { course:'Construction Mgmt',     section:'CE-6A',       students:45 },
+    ],
+    BT: [
+      { course:'Molecular Biology',     section:'BT-3A',       students:40 },
+      { course:'Genetic Engineering',   section:'BT-4A',       students:40 },
+      { course:'Plant Biotechnology',   section:'BT-5A',       students:38 },
+      { course:'Industrial Biotech',    section:'BT-6A',       students:35 },
+    ],
+  };
+
+  const scheduleByDept = {
+    CSE: [
+      { time:'9:00 AM',  cls:'ML — CSE 5A',     room:'CS-301' },
+      { time:'10:00 AM', cls:'ML — CSE 5B',     room:'CS-302' },
+      { time:'11:00 AM', cls:'ML Lab',           room:'CS Lab 2' },
+      { time:'2:00 PM',  cls:'Algorithms 3A',    room:'CS-201' },
+    ],
+    EE: [
+      { time:'9:00 AM',  cls:'Power Systems 5A',  room:'EE-301' },
+      { time:'10:00 AM', cls:'Control Sys 4A',    room:'EE-201' },
+      { time:'11:00 AM', cls:'EE Lab',            room:'EE Lab 1' },
+      { time:'2:00 PM',  cls:'El. Machines 4B',   room:'EE-302' },
+    ],
+    ME: [
+      { time:'9:00 AM',  cls:'Theory of Mach 5A', room:'ME-301' },
+      { time:'10:00 AM', cls:'Heat Transfer 4A',  room:'ME-201' },
+      { time:'11:00 AM', cls:'ME Lab',            room:'ME Lab 1' },
+      { time:'2:00 PM',  cls:'Fluid Mech 3A',     room:'ME-101' },
+    ],
+    CE: [
+      { time:'9:00 AM',  cls:'Struct. Analysis 3A',room:'CE-301' },
+      { time:'10:00 AM', cls:'RCC Design 4A',      room:'CE-201' },
+      { time:'11:00 AM', cls:'CE Lab',             room:'CE Lab 1' },
+      { time:'2:00 PM',  cls:'Foundation Engg 5A', room:'CE-302' },
+    ],
+    BT: [
+      { time:'9:00 AM',  cls:'Mol. Biology 3A',   room:'BT-301' },
+      { time:'10:00 AM', cls:'Genetic Engg 4A',   room:'BT-201' },
+      { time:'11:00 AM', cls:'BT Lab',            room:'BT Lab 1' },
+      { time:'2:00 PM',  cls:'Plant Biotech 5A',  room:'BT-302' },
+    ],
+  };
+
+  const courses  = coursesByDept[dept]  || coursesByDept.CSE;
+  const schedule = scheduleByDept[dept] || scheduleByDept.CSE;
+
+  // Update courses table
+  const courseTbody = document.querySelector('#fdash-overview .dash-widget:first-child table tbody');
+  if (courseTbody) {
+    courseTbody.innerHTML = courses.map(c =>
+      `<tr><td>${c.course}</td><td>${c.section}</td><td>${c.students}</td></tr>`
+    ).join('');
+  }
+
+  // Update schedule table
+  const schedTbody = document.querySelector('#fdash-overview .dash-widget:last-child table tbody');
+  if (schedTbody) {
+    schedTbody.innerHTML = schedule.map(s =>
+      `<tr><td>${s.time}</td><td>${s.cls}</td><td>${s.room}</td></tr>`
+    ).join('');
+  }
+
+  // Update faculty marks course dropdown to match dept subjects
+  const subjectsByDept = {
+    CSE: ['Machine Learning','Algorithms','Software Engineering','Computer Networks','Cloud Computing','Database Systems'],
+    EE:  ['Power Systems','Control Systems','Electrical Machines II','High Voltage Engg','Circuit Theory'],
+    ME:  ['Theory of Machines','Heat Transfer','Fluid Mechanics','Machine Design','CAD/CAM'],
+    CE:  ['Structural Analysis','RCC Design','Foundation Engineering','Construction Mgmt','Water Resources'],
+    BT:  ['Molecular Biology','Genetic Engineering','Plant Biotechnology','Industrial Biotech','Bioinformatics'],
+  };
+
+  const deptSubjects = subjectsByDept[dept] || subjectsByDept.CSE;
+  const semOptions   = [3,4,5,6];
+
+  // Update fMarksCourse select
+  const fMarksCourse = document.getElementById('fMarksCourse');
+  if (fMarksCourse) {
+    fMarksCourse.innerHTML = deptSubjects.flatMap(subj =>
+      semOptions.map(s => `<option value="${subj}-${s}">${subj} — ${dept} Sem ${s}</option>`)
+    ).join('');
+  }
+
+  // Update assignment course select
+  const asgnCourse = document.getElementById('asgn-course');
+  if (asgnCourse) {
+    asgnCourse.innerHTML = deptSubjects.map(subj =>
+      `<option>${subj} (${dept})</option>`
+    ).join('');
+  }
+
+  // Update material subject select
+  const matSubject = document.getElementById('mat-subject');
+  if (matSubject) {
+    matSubject.innerHTML = deptSubjects.map(subj =>
+      `<option>${subj} (${dept})</option>`
+    ).join('');
+  }
+
+  // Update attendance course select
+  const attCourse = document.querySelector('#fdash-attendance select');
+  if (attCourse) {
+    attCourse.innerHTML = deptSubjects.flatMap(subj =>
+      semOptions.map(s =>
+        `<option>${subj} — ${dept} ${s}A</option>`
+      )
+    ).join('');
   }
 }
