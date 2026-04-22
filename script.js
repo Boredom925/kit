@@ -1425,7 +1425,9 @@ async function submitCreateAccount() {
     document.getElementById('adminCreateModal')?.remove();
     loadAdminAccounts();  // refresh table
   } else {
-    showToast(r?.data?.error || 'Failed to create account.');
+    const fieldErrors = r?.data?.details?.fieldErrors || {};
+    const firstDetail = Object.values(fieldErrors).flat()[0];
+    showToast(firstDetail || r?.data?.error || 'Failed to create account.');
   }
 }
 
