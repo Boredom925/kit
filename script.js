@@ -80,6 +80,35 @@ async function apiFetch(path, options = {}) {
     handleLogout();
     return null;
   }
+
+  // Decode JWT locally — check expiry and role BEFORE hitting the network
+  const payload = decodeJwtPayload(token);
+  if (!payload || (payload.exp && payload.exp * 1000 < Date.now())) {
+    showToast('Session expired. Please log in again.');
+    handleLogout();
+    return null;
+  }
+
+  // For admin API paths, ensure the local token actually has the admin role
+  if (path.startsWith('/api/admin') && payload.role !== 'admin') {
+    showToast('⚠ Session mismatch — please log in again as Admin.');
+    localStorage.removeItem('kit_token');
+    localStorage.removeItem('kit_user');
+    currentUser = null;
+    setTimeout(() => navigateTo('admin-login'), 600);
+    return null;
+  }
+
+  // For faculty API paths, ensure the local token has the faculty role
+  if (path.startsWith('/api/faculty') && payload.role !== 'faculty') {
+    showToast('⚠ Session mismatch — please log in again as Faculty.');
+    localStorage.removeItem('kit_token');
+    localStorage.removeItem('kit_user');
+    currentUser = null;
+    setTimeout(() => navigateTo('faculty-login'), 600);
+    return null;
+  }
+
   try {
     const res  = await fetch(API + path, {
       ...options,
@@ -90,7 +119,35 @@ async function apiFetch(path, options = {}) {
       },
     });
     const data = await res.json();
-    if (res.status === 401) { handleLogout(); return null; }
+    if (res.status === 401) {
+      showToast('Session expired. Please log in again.');
+      handleLogout();
+      return null;
+    }
+    // 403: show error — only log out if it's a genuine auth/role error,
+    // NOT for departmental restrictions (e.g. "You can only post for ME dept")
+    // This applies to ALL portals: admin, faculty, student
+    if (res.status === 403) {
+      const errMsg = data?.error || 'Access denied.';
+      showToast('⚠ ' + errMsg);
+
+      // Departmental restriction messages — show toast only, keep session alive
+      const isDeptRestriction =
+        errMsg.toLowerCase().includes('you can only') ||
+        errMsg.toLowerCase().includes('department not set') ||
+        errMsg.toLowerCase().includes('your department');
+
+      if (!isDeptRestriction) {
+        // Genuine role/auth mismatch — clear session and redirect to correct portal login
+        localStorage.removeItem('kit_token');
+        localStorage.removeItem('kit_user');
+        currentUser = null;
+        if      (path.startsWith('/api/admin'))   setTimeout(() => navigateTo('admin-login'),   800);
+        else if (path.startsWith('/api/faculty')) setTimeout(() => navigateTo('faculty-login'), 800);
+        else if (path.startsWith('/api/student')) setTimeout(() => navigateTo('student-login'), 800);
+      }
+      return { ok: false, status: 403, data };
+    }
     return { ok: res.ok, status: res.status, data };
   } catch {
     showToast('Network error. Check your connection.');
@@ -611,10 +668,10 @@ async function saveFacultyAttendance() {
   const dateEl   = document.querySelector('#fdash-attendance input[type="date"]');
   if (!dateEl?.value) { showToast('Please select a date.'); return; }
 
+  // Always use the logged-in faculty's own department (enforced server-side too)
+  const department = getFacultyDept();
   const courseText = courseEl?.options[courseEl.selectedIndex]?.text || '';
   const subject    = courseText.split('—')[0].trim() || courseText;
-  const deptMatch  = courseText.match(/\b(CSE|EE|ME|CE|BT)\b/);
-  const department = deptMatch ? deptMatch[1] : getFacultyDept();
   const semMatch   = courseText.match(/\b(\d)\b/);
   const semester   = semMatch ? parseInt(semMatch[1]) : 5;
 
@@ -638,18 +695,17 @@ async function saveFacultyAttendance() {
 
 // ── Upload Marks ──────────────────────────────────────────────
 async function saveFacultyMarks() {
-  const user      = JSON.parse(localStorage.getItem('kit_user') || '{}');
   const courseEl  = document.getElementById('fMarksCourse');
   const semEl     = document.getElementById('fMarksSem');
   const typeEl    = document.getElementById('fMarksType');
   const labelEl   = document.getElementById('fMarksExamLabel');
   const maxEl     = document.getElementById('fMarksMax');
 
+  // Always use the logged-in faculty's own department (enforced server-side too)
+  const department = getFacultyDept();
   const courseText = courseEl?.options[courseEl?.selectedIndex]?.text || '';
-  // "Machine Learning — CSE 5A"  → subject = "Machine Learning"
+  // "Machine Learning — ME Sem 5"  → subject = "Machine Learning"
   const subject    = courseText.split('—')[0].trim() || 'Unknown';
-  const deptMatch  = courseText.match(/\b(CSE|EE|ME|CE|BT)\b/);
-  const department = deptMatch ? deptMatch[1] : (user.department || getFacultyDept());
 
   const typeMap = { assign:'assignment', internal:'internal', midsem:'midsem', semester:'semester' };
   const type    = typeMap[typeEl?.value] || 'assignment';
@@ -686,7 +742,6 @@ function resetFacultyMarks() {
 
 // ── Create Assignment ─────────────────────────────────────────
 async function createAssignment() {
-  const user     = JSON.parse(localStorage.getItem('kit_user') || '{}');
   const course   = document.getElementById('asgn-course');
   const semEl    = document.getElementById('asgn-sem');
   const titleEl  = document.getElementById('asgn-title');
@@ -697,11 +752,12 @@ async function createAssignment() {
   if (!titleEl?.value?.trim()) { showToast('Please enter assignment title.'); return; }
   if (!dueEl?.value)           { showToast('Please select a due date.');      return; }
 
+  // Always use the logged-in faculty's own department (enforced server-side too)
+  const dept       = getFacultyDept();
   const courseText = course?.options[course.selectedIndex]?.text || '';
-  // "Machine Learning (CSE)"
+  // "Machine Learning (ME)" → subject = "Machine Learning"
   const subMatch   = courseText.match(/^(.+?)\s*\((\w+)\)$/);
   const subject    = subMatch ? subMatch[1].trim() : courseText;
-  const dept       = subMatch ? subMatch[2] : (user.department || getFacultyDept());
 
   const r = await apiFetch('/api/faculty/assignments', {
     method: 'POST',
@@ -1521,10 +1577,11 @@ async function uploadMaterial() {
   }
 
   // Now save the material record to Firestore via the API
+  // Always use faculty's own department (enforced server-side too)
+  const dept       = getFacultyDept();
   const courseText = subjectEl?.options[subjectEl.selectedIndex]?.text || '';
   const subMatch   = courseText.match(/^(.+?)\s*\((\w+)\)$/);
   const subject    = subMatch ? subMatch[1].trim() : courseText;
-  const dept       = subMatch ? subMatch[2] : (user.department || 'CSE');
 
   const typeMap = {
     'Lecture Notes':'notes', 'Slides':'slides', 'Assignment':'assignment',
