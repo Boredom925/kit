@@ -258,19 +258,32 @@ function initFacilityTabs() {
 
 async function handleLogin(e, role) {
   e.preventDefault();
-  const form       = e.target;
-  const textInputs = [...form.querySelectorAll('input[type="text"]')];
-  const pwdInput   = form.querySelector('input[type="password"]');
+  const form = e.target;
 
-  if (!textInputs[0] || !pwdInput) { showToast('Form error. Please refresh.'); return; }
-
-  const id       = textInputs[0].value.trim();
-  const password = pwdInput.value;
-  const securityCode = role === 'admin' ? (textInputs[1]?.value?.trim() || '') : undefined;
+  // Use explicit IDs for admin to avoid cross-form DOM ordering issues
+  let id, password, securityCode;
+  if (role === 'admin') {
+    const usernameEl = document.getElementById('adm-username');
+    const pwdEl      = document.getElementById('adm-pwd');
+    const secEl      = document.getElementById('adm-security');
+    if (!usernameEl || !pwdEl || !secEl) { showToast('Form error. Please refresh.'); return; }
+    id           = usernameEl.value.trim();
+    password     = pwdEl.value;
+    securityCode = secEl.value.trim();
+    if (!securityCode) { showToast('Please enter the security code.'); return; }
+  } else {
+    const textInputs = [...form.querySelectorAll('input[type="text"]')];
+    const pwdInput   = form.querySelector('input[type="password"]');
+    if (!textInputs[0] || !pwdInput) { showToast('Form error. Please refresh.'); return; }
+    id       = textInputs[0].value.trim();
+    password = pwdInput.value;
+    securityCode = undefined;
+  }
 
   if (!id || !password) { showToast('Please enter your ID and password.'); return; }
 
   const btn = form.querySelector('button[type="submit"]');
+  const defaultBtnText = role === 'admin' ? 'Secure Login' : 'Login to Portal';
   if (btn) { btn.disabled = true; btn.textContent = 'Logging in...'; }
   showToast('Logging in...');
 
@@ -284,7 +297,7 @@ async function handleLogin(e, role) {
 
     if (!res.ok) {
       showToast(data.error || 'Login failed.');
-      if (btn) { btn.disabled = false; btn.textContent = 'Login to Portal'; }
+      if (btn) { btn.disabled = false; btn.textContent = defaultBtnText; }
       return;
     }
 
@@ -303,7 +316,7 @@ async function handleLogin(e, role) {
 
   } catch {
     showToast('Connection error. Is the backend reachable?');
-    if (btn) { btn.disabled = false; btn.textContent = 'Login to Portal'; }
+    if (btn) { btn.disabled = false; btn.textContent = defaultBtnText; }
   }
 }
 
