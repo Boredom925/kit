@@ -675,8 +675,138 @@ function getFacultyDept() {
   return u.department || 'CSE';
 }
 
+function getFacultySemesterSubjects(dept, semester) {
+  const deptSyllabus = SYLLABUS[dept] || {};
+  return deptSyllabus[Number(semester)] || [];
+}
+
+function setSelectOptions(selectEl, items, formatter) {
+  if (!selectEl) return;
+  if (!items.length) {
+    selectEl.innerHTML = '<option value="">No subjects available</option>';
+    return;
+  }
+
+  selectEl.innerHTML = items.map(item => {
+    const option = formatter ? formatter(item) : { value: item, label: item };
+    return `<option value="${option.value}">${option.label}</option>`;
+  }).join('');
+}
+
+function fillFacultySubjectSelects(dept) {
+  const attendanceSemester = parseInt(document.getElementById('fAttSem')?.value) || 1;
+  const marksSemester = parseInt(document.getElementById('fMarksSem')?.value) || attendanceSemester;
+  const assignmentSemester = parseInt(document.getElementById('asgn-sem')?.value) || attendanceSemester;
+  const materialSemester = parseInt(document.getElementById('mat-sem')?.value) || attendanceSemester;
+
+  setSelectOptions(
+    document.getElementById('fAttSubject'),
+    getFacultySemesterSubjects(dept, attendanceSemester)
+  );
+  setSelectOptions(
+    document.getElementById('fMarksCourse'),
+    getFacultySemesterSubjects(dept, marksSemester)
+  );
+  setSelectOptions(
+    document.getElementById('asgn-course'),
+    getFacultySemesterSubjects(dept, assignmentSemester),
+    subj => ({ value: subj, label: `${subj} (${dept})` })
+  );
+  setSelectOptions(
+    document.getElementById('mat-subject'),
+    getFacultySemesterSubjects(dept, materialSemester),
+    subj => ({ value: subj, label: `${subj} (${dept})` })
+  );
+}
+
+async function fetchFacultyStudentsBySemester(semester) {
+  const r = await apiFetch('/api/faculty/students?semester=' + Number(semester || 1));
+  if (!r?.ok) return [];
+  return r.data.students || [];
+}
+
+function renderFacultyAttendanceRows(students) {
+  const tbody = document.querySelector('#fdash-attendance .att-table tbody');
+  if (!tbody) return;
+
+  if (!students.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-light);">No students found for this semester.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = students.map((student, index) => `
+    <tr data-roll="${student.rollNo}" data-name="${student.name}">
+      <td>${student.rollNo}</td>
+      <td>${student.name}</td>
+      <td><input type="radio" name="att_${student.rollNo || index}" value="P" checked/></td>
+      <td><input type="radio" name="att_${student.rollNo || index}" value="A"/></td>
+      <td><input type="radio" name="att_${student.rollNo || index}" value="L"/></td>
+    </tr>
+  `).join('');
+}
+
+function renderFacultyMarksRows(students) {
+  const tbody = document.getElementById('fMarksBody');
+  const maxMarks = parseFloat(document.getElementById('fMarksMax')?.value) || 10;
+  if (!tbody) return;
+
+  if (!students.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-light);">No students found for this semester.</td></tr>';
+    updateEffective();
+    return;
+  }
+
+  tbody.innerHTML = students.map(student => `
+    <tr data-roll="${student.rollNo}" data-name="${student.name}" data-year="${student.year || ''}">
+      <td>${student.rollNo}</td>
+      <td>${student.name}</td>
+      <td>Year ${student.year || '-'}</td>
+      <td><input type="number" class="marks-input" min="0" max="${maxMarks}" value="0" style="width:65px"/></td>
+      <td class="marks-max-cell">${maxMarks}</td>
+      <td class="marks-eff-cell">0 / ${maxMarks}</td>
+    </tr>
+  `).join('');
+
+  updateEffective();
+}
+
+async function loadFacultyAttendanceStudents() {
+  const semester = parseInt(document.getElementById('fAttSem')?.value) || 1;
+  fillFacultySubjectSelects(getFacultyDept());
+  renderFacultyAttendanceRows(await fetchFacultyStudentsBySemester(semester));
+}
+
+async function loadFacultyMarksStudents() {
+  const semester = parseInt(document.getElementById('fMarksSem')?.value) || 1;
+  fillFacultySubjectSelects(getFacultyDept());
+  renderFacultyMarksRows(await fetchFacultyStudentsBySemester(semester));
+}
+
+function initFacultyControls() {
+  const dept = getFacultyDept();
+  const dateEl = document.getElementById('fAttDate');
+  const root = document.getElementById('page-faculty-dashboard');
+
+  if (dateEl && !dateEl.value) {
+    dateEl.value = new Date().toISOString().slice(0, 10);
+  }
+
+  fillFacultySubjectSelects(dept);
+
+  if (!root?.dataset.facultyControlsBound) {
+    document.getElementById('fAttSem')?.addEventListener('change', loadFacultyAttendanceStudents);
+    document.getElementById('fMarksSem')?.addEventListener('change', loadFacultyMarksStudents);
+    document.getElementById('asgn-sem')?.addEventListener('change', () => fillFacultySubjectSelects(getFacultyDept()));
+    document.getElementById('mat-sem')?.addEventListener('change', () => fillFacultySubjectSelects(getFacultyDept()));
+    root.dataset.facultyControlsBound = 'true';
+  }
+
+  loadFacultyAttendanceStudents();
+  loadFacultyMarksStudents();
+}
+
 // ── Mark Attendance ───────────────────────────────────────────
-async function saveFacultyAttendance() {
+async function saveFacultyAttendanceLegacy() {
   const courseEl = document.querySelector('#fdash-attendance select');
   const dateEl   = document.querySelector('#fdash-attendance input[type="date"]');
   if (!dateEl?.value) { showToast('Please select a date.'); return; }
@@ -707,7 +837,7 @@ async function saveFacultyAttendance() {
 }
 
 // ── Upload Marks ──────────────────────────────────────────────
-async function saveFacultyMarks() {
+async function saveFacultyMarksLegacy() {
   const courseEl  = document.getElementById('fMarksCourse');
   const semEl     = document.getElementById('fMarksSem');
   const typeEl    = document.getElementById('fMarksType');
@@ -751,6 +881,73 @@ async function saveFacultyMarks() {
 function resetFacultyMarks() {
   document.querySelectorAll('#fMarksBody .marks-input').forEach(i => i.value = '');
   updateEffective();
+}
+
+async function saveFacultyAttendance() {
+  const courseEl = document.getElementById('fAttSubject');
+  const dateEl   = document.getElementById('fAttDate');
+  const semEl    = document.getElementById('fAttSem');
+  if (!dateEl?.value) { showToast('Please select a date.'); return; }
+
+  const department = getFacultyDept();
+  const subject    = courseEl?.value || '';
+  const semester   = parseInt(semEl?.value) || 1;
+  if (!subject) { showToast('Please select a subject.'); return; }
+
+  const records = [];
+  document.querySelectorAll('#fdash-attendance .att-table tbody tr').forEach(row => {
+    const rollNo      = row.dataset.roll || row.children[0]?.textContent?.trim();
+    const studentName = row.dataset.name || row.children[1]?.textContent?.trim();
+    if (!rollNo) return;
+    const checked = row.querySelector('input[type="radio"]:checked');
+    records.push({ rollNo, studentName, status: checked?.value || 'P' });
+  });
+
+  if (!records.length) { showToast('No student rows found.'); return; }
+
+  const r = await apiFetch('/api/faculty/attendance', {
+    method: 'POST',
+    body: JSON.stringify({ subject, semester, department, date: dateEl.value, records }),
+  });
+  showToast(r?.ok ? `Attendance saved for ${records.length} students.` : (r?.data?.error || 'Failed to save.'));
+}
+
+async function saveFacultyMarks() {
+  const courseEl  = document.getElementById('fMarksCourse');
+  const semEl     = document.getElementById('fMarksSem');
+  const typeEl    = document.getElementById('fMarksType');
+  const labelEl   = document.getElementById('fMarksExamLabel');
+  const maxEl     = document.getElementById('fMarksMax');
+
+  const department = getFacultyDept();
+  const subject    = courseEl?.value || '';
+  const typeMap = { assign:'assignment', internal:'internal', midsem:'midsem', semester:'semester' };
+  const type    = typeMap[typeEl?.value] || 'assignment';
+  const label   = labelEl?.value?.trim() || (typeEl?.options[typeEl?.selectedIndex]?.text || 'Exam');
+  const maxMarks = parseFloat(maxEl?.value) || 10;
+  const semester = parseInt(semEl?.value) || 1;
+
+  if (!subject) { showToast('Please select a subject.'); return; }
+  if (!label) { showToast('Please enter a label (e.g. Assignment 1).'); return; }
+
+  const records = [];
+  document.querySelectorAll('#fMarksBody tr[data-roll]').forEach(row => {
+    const inp = row.querySelector('.marks-input');
+    if (!inp) return;
+    records.push({
+      rollNo: row.dataset.roll || '',
+      studentName: row.dataset.name || '',
+      obtained: parseFloat(inp.value) || 0,
+    });
+  });
+
+  if (!records.length) { showToast('No student records to save.'); return; }
+
+  const r = await apiFetch('/api/faculty/marks', {
+    method: 'POST',
+    body: JSON.stringify({ subject, semester, department, type, label, maxMarks, records }),
+  });
+  showToast(r?.ok ? 'Marks saved.' : (r?.data?.error || 'Failed to save marks.'));
 }
 
 // ── Create Assignment ─────────────────────────────────────────
@@ -1807,7 +2004,7 @@ function populateStudentOverview(dept, semester) {
 }
 
 // ── Populate faculty dashboard with their dept content ────────
-function populateFacultyOverview(dept) {
+function populateFacultyOverviewLegacy(dept) {
   const coursesByDept = {
     CSE: [
       { course:'Machine Learning',     section:'CSE-5A & 5B', students:90 },
@@ -1938,4 +2135,34 @@ function populateFacultyOverview(dept) {
       )
     ).join('');
   }
+}
+
+function populateFacultyOverview(dept) {
+  const deptSyllabus = SYLLABUS[dept] || SYLLABUS.CSE;
+  const semesters = Object.keys(deptSyllabus).map(Number).sort((a, b) => a - b);
+  const currentSem = parseInt(document.getElementById('fAttSem')?.value) || semesters[0] || 1;
+
+  const courseTbody = document.querySelector('#fdash-overview .dash-widget:first-child table tbody');
+  if (courseTbody) {
+    courseTbody.innerHTML = semesters.map(semester => {
+      const subjects = deptSyllabus[semester] || [];
+      return `<tr><td>Semester ${semester}</td><td>${subjects.length} subjects</td><td>${subjects.join(', ')}</td></tr>`;
+    }).join('');
+  }
+
+  const schedTbody = document.querySelector('#fdash-overview .dash-widget:last-child table tbody');
+  if (schedTbody) {
+    const currentSubjects = deptSyllabus[currentSem] || [];
+    schedTbody.innerHTML = currentSubjects.length
+      ? currentSubjects.map((subject, index) => `
+          <tr>
+            <td>${9 + index}:00 AM</td>
+            <td>${subject}</td>
+            <td>${dept}-${currentSem}0${index + 1}</td>
+          </tr>
+        `).join('')
+      : '<tr><td colspan="3" style="text-align:center;color:var(--text-light);">No subjects configured for this semester.</td></tr>';
+  }
+
+  initFacultyControls();
 }

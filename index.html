@@ -1114,18 +1114,20 @@
         <div class="dash-panel" id="fdash-attendance">
           <h4>Mark Attendance</h4>
           <div class="att-controls">
-            <select><option>Machine Learning — CSE 5A</option><option>Machine Learning — CSE 5B</option><option>Algorithms — CSE 3A</option></select>
-            <input type="date" value="2025-10-28"/>
-            <button class="btn-primary" style="padding:0.5rem 1.2rem">Load Students</button>
+            <select id="fAttSem">
+              <option value="1">Semester 1</option><option value="2">Semester 2</option>
+              <option value="3">Semester 3</option><option value="4">Semester 4</option>
+              <option value="5" selected>Semester 5</option><option value="6">Semester 6</option>
+              <option value="7">Semester 7</option><option value="8">Semester 8</option>
+            </select>
+            <select id="fAttSubject"></select>
+            <input id="fAttDate" type="date"/>
+            <button class="btn-primary" style="padding:0.5rem 1.2rem" onclick="loadFacultyAttendanceStudents()">Load Students</button>
           </div>
           <table class="simple-table att-table">
             <thead><tr><th>Roll No.</th><th>Name</th><th>Present</th><th>Absent</th><th>Late</th></tr></thead>
             <tbody>
-              <tr><td>KIT2022CSE001</td><td>Aarav Bose</td><td><input type="radio" name="att1" value="P" checked/></td><td><input type="radio" name="att1" value="A"/></td><td><input type="radio" name="att1" value="L"/></td></tr>
-              <tr><td>KIT2022CSE002</td><td>Aishwarya Das</td><td><input type="radio" name="att2" value="P" checked/></td><td><input type="radio" name="att2" value="A"/></td><td><input type="radio" name="att2" value="L"/></td></tr>
-              <tr><td>KIT2022CSE003</td><td>Rahul Sen</td><td><input type="radio" name="att3" value="P"/></td><td><input type="radio" name="att3" value="A" checked/></td><td><input type="radio" name="att3" value="L"/></td></tr>
-              <tr><td>KIT2022CSE047</td><td>Arjun Sharma</td><td><input type="radio" name="att4" value="P" checked/></td><td><input type="radio" name="att4" value="A"/></td><td><input type="radio" name="att4" value="L"/></td></tr>
-              <tr><td>KIT2022CSE048</td><td>Priya Ghosh</td><td><input type="radio" name="att5" value="P" checked/></td><td><input type="radio" name="att5" value="A"/></td><td><input type="radio" name="att5" value="L"/></td></tr>
+              <tr><td colspan="5" style="text-align:center;color:var(--text-light);">Select a semester to load students.</td></tr>
             </tbody>
           </table>
           <button class="btn-primary" style="margin-top:1.2rem" onclick="saveFacultyAttendance()"><i class="fa fa-save"></i> Save Attendance</button>
@@ -1137,17 +1139,16 @@
             Multiple assignment/internal entries are averaged to 10 each. Mid-Sem max: 20. Semester max: 60. Total: 100.
           </p>
           <div class="att-controls" style="flex-wrap:wrap;gap:0.6rem;margin-bottom:1.2rem;">
-            <select id="fMarksCourse" style="padding:0.55rem 0.8rem;border:1px solid #ddd;border-radius:6px;">
-              <option value="ml">Machine Learning — CSE 5A</option>
-              <option value="algo">Algorithms — CSE 3A</option>
-              <option value="swe">Software Engineering — CSE 5B</option>
-            </select>
+            <select id="fMarksCourse" style="padding:0.55rem 0.8rem;border:1px solid #ddd;border-radius:6px;"></select>
             <select id="fMarksSem" style="padding:0.55rem 0.8rem;border:1px solid #ddd;border-radius:6px;">
               <option value="1">Semester 1</option>
               <option value="2">Semester 2</option>
               <option value="3">Semester 3</option>
               <option value="4">Semester 4</option>
               <option value="5" selected>Semester 5</option>
+              <option value="6">Semester 6</option>
+              <option value="7">Semester 7</option>
+              <option value="8">Semester 8</option>
             </select>
             <select id="fMarksType" onchange="toggleMarksType()" style="padding:0.55rem 0.8rem;border:1px solid #ddd;border-radius:6px;">
               <option value="assign">Assignment</option>
@@ -1157,6 +1158,7 @@
             </select>
             <input type="text" id="fMarksExamLabel" placeholder="Label (e.g. Assignment 1)" style="padding:0.55rem 0.8rem;border:1px solid #ddd;border-radius:6px;width:180px;"/>
             <input type="number" id="fMarksMax" min="1" max="100" placeholder="Max marks" value="10" style="padding:0.55rem 0.8rem;border:1px solid #ddd;border-radius:6px;width:110px;"/>
+            <button class="btn-primary" style="padding:0.55rem 1rem" onclick="loadFacultyMarksStudents()">Load Students</button>
           </div>
 
           <!-- Max marks hint -->
@@ -1178,30 +1180,7 @@
                 </tr>
               </thead>
               <tbody id="fMarksBody">
-                <tr data-roll="KIT2022CSE001" data-name="Aarav Bose" data-year="3">
-                  <td>KIT2022CSE001</td><td>Aarav Bose</td><td>Year 3</td>
-                  <td><input type="number" class="marks-input" min="0" max="10" value="8" style="width:65px"/></td>
-                  <td class="marks-max-cell">10</td>
-                  <td class="marks-eff-cell">8 / 10</td>
-                </tr>
-                <tr data-roll="KIT2022CSE002" data-name="Aishwarya Das" data-year="3">
-                  <td>KIT2022CSE002</td><td>Aishwarya Das</td><td>Year 3</td>
-                  <td><input type="number" class="marks-input" min="0" max="10" value="9" style="width:65px"/></td>
-                  <td class="marks-max-cell">10</td>
-                  <td class="marks-eff-cell">9 / 10</td>
-                </tr>
-                <tr data-roll="KIT2022CSE047" data-name="Arjun Sharma" data-year="3">
-                  <td>KIT2022CSE047</td><td>Arjun Sharma</td><td>Year 3</td>
-                  <td><input type="number" class="marks-input" min="0" max="10" value="9" style="width:65px"/></td>
-                  <td class="marks-max-cell">10</td>
-                  <td class="marks-eff-cell">9 / 10</td>
-                </tr>
-                <tr data-roll="KIT2022CSE003" data-name="Rahul Sen" data-year="3">
-                  <td>KIT2022CSE003</td><td>Rahul Sen</td><td>Year 3</td>
-                  <td><input type="number" class="marks-input" min="0" max="10" value="7" style="width:65px"/></td>
-                  <td class="marks-max-cell">10</td>
-                  <td class="marks-eff-cell">7 / 10</td>
-                </tr>
+                <tr><td colspan="6" style="text-align:center;color:var(--text-light);">Select a semester to load students.</td></tr>
               </tbody>
             </table>
           </div>
