@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initFacilityTabs();
   setDate();
   checkScrollShadow();
+  loadHomeNotices();
   restoreSession();
 });
 
@@ -189,6 +190,7 @@ function navigateTo(page) {
   if (page === 'faculty-dashboard' && currentUser !== 'faculty') { _showPage('faculty-login'); return; }
   if (page === 'admin-dashboard'   && currentUser !== 'admin')   { _showPage('admin-login');   return; }
 
+  if (page === 'home') loadHomeNotices();
   _showPage(page);
 }
 
@@ -407,6 +409,39 @@ function populateDashboard(role, user) {
 // ═══════════════════════════════════════════════════════════════
 // STUDENT FEATURES
 // ═══════════════════════════════════════════════════════════════
+
+async function loadHomeNotices() {
+  const list = document.querySelector('#page-home .notice-list');
+  if (!list) return;
+
+  try {
+    const res = await fetch(API + '/api/public/notices');
+    const data = await res.json();
+    if (!res.ok) return;
+
+    const items = data.notices || [];
+    if (!items.length) return;
+
+    const badgeMap = {
+      urgent: { cls: 'urgent', text: 'Urgent' },
+      important: { cls: 'success', text: 'Important' },
+      normal: { cls: 'info', text: 'Notice' },
+    };
+
+    list.innerHTML = items.slice(0, 5).map(n => {
+      const badge = badgeMap[n.priority] || badgeMap.normal;
+      const date = n.createdAt?.slice?.(0, 10) || '';
+      return `
+        <div class="notice-item ${badge.cls === 'urgent' ? 'urgent' : ''}">
+          <span class="notice-badge ${badge.cls}">${badge.text}</span>
+          <p>${n.title}</p>
+          <span class="notice-date"><i class="fa fa-calendar"></i> ${date}</span>
+        </div>`;
+    }).join('');
+  } catch {
+    // Keep the static fallback notices already present in the HTML.
+  }
+}
 
 // ── Notices ───────────────────────────────────────────────────
 async function loadStudentNotices() {
