@@ -1861,45 +1861,39 @@ async function uploadFileToStorage(file) {
   const progressText = document.getElementById('mat-progress-text');
 
   if (progressWrap) progressWrap.style.display = 'block';
-  if (progressText) progressText.textContent   = 'Getting upload URL...';
+  if (progressText) progressText.textContent   = 'Uploading file...';
   if (progressBar)  progressBar.style.width    = '10%';
 
-  // Step 1: Get a signed upload URL from our backend
-  const sigRes = await apiFetch('/api/upload/signed-url', {
-    method: 'POST',
-    body: JSON.stringify({ fileName: file.name, contentType: file.type || 'application/octet-stream' }),
-  });
-
-  if (!sigRes?.ok) {
-    showToast(sigRes?.data?.error || 'Failed to get upload URL.');
-    if (progressWrap) progressWrap.style.display = 'none';
-    return null;
-  }
-
-  const { uploadUrl, publicUrl } = sigRes.data;
-
-  if (progressText) progressText.textContent = 'Uploading file...';
-  if (progressBar)  progressBar.style.width  = '30%';
-
-  // Step 2: Upload file directly to Firebase Storage using the signed URL
   try {
-    const uploadRes = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': file.type || 'application/octet-stream' },
-      body: file,
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('Could not read the selected file.'));
+      reader.readAsDataURL(file);
     });
 
-    if (!uploadRes.ok) {
-      showToast('Upload to storage failed. Try a Google Drive link instead.');
+    if (progressBar)  progressBar.style.width  = '45%';
+
+    const uploadRes = await apiFetch('/api/upload/material-file', {
+      method: 'POST',
+      body: JSON.stringify({
+        fileName: file.name,
+        contentType: file.type || 'application/octet-stream',
+        dataUrl,
+      }),
+    });
+
+    if (!uploadRes?.ok) {
+      showToast(uploadRes?.data?.error || 'Upload to storage failed.');
       if (progressWrap) progressWrap.style.display = 'none';
       return null;
     }
 
     if (progressBar)  progressBar.style.width    = '100%';
-    if (progressText) progressText.textContent   = '✔ File uploaded!';
+    if (progressText) progressText.textContent   = 'File uploaded.';
     setTimeout(() => { if (progressWrap) progressWrap.style.display = 'none'; }, 2000);
 
-    return publicUrl;
+    return uploadRes.data.publicUrl;
 
   } catch (err) {
     showToast('Upload failed: ' + err.message);
