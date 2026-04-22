@@ -983,12 +983,9 @@ async function createAssignment() {
   if (!titleEl?.value?.trim()) { showToast('Please enter assignment title.'); return; }
   if (!dueEl?.value)           { showToast('Please select a due date.');      return; }
 
-  // Always use the logged-in faculty's own department (enforced server-side too)
-  const dept       = getFacultyDept();
-  const courseText = course?.options[course.selectedIndex]?.text || '';
-  // "Machine Learning (ME)" → subject = "Machine Learning"
-  const subMatch   = courseText.match(/^(.+?)\s*\((\w+)\)$/);
-  const subject    = subMatch ? subMatch[1].trim() : courseText;
+  const dept    = getFacultyDept();
+  const subject = course?.value?.trim() || '';
+  if (!subject) { showToast('Please select a subject.'); return; }
 
   const r = await apiFetch('/api/faculty/assignments', {
     method: 'POST',
